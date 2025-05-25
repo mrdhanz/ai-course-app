@@ -71,21 +71,25 @@ export async function POST(request: Request) {
         verifiedBy: body.verifiedBy,
         totalDuration: body.totalDuration,
         learningObjectives: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           create: body.learningObjective?.map((obj: any) => ({
             objective: obj,
           })) || [],
         },
         skillsGained: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           create: body.skillsGain?.map((skill: any) => ({
             skill: skill,
           })) || [],
         },
         modules: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           create: body.modules.map((module: any) => ({
             title: module.title,
             description: module.description,
             durationHours: module.durationHours,
             lessons: {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
               create: module.lessons.map((lesson: any) => ({
                 title: lesson,
                 content: null,

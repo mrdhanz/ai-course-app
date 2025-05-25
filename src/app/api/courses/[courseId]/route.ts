@@ -4,9 +4,9 @@ import prisma from "@/lib/prisma";
 // GET - Get single course by ID
 export async function GET(
   request: Request,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
-  const id = params.courseId;
+  const id = (await params).courseId;
   try {
     const course = await prisma.course.findUnique({
       where: { id },
@@ -34,6 +34,7 @@ export async function GET(
 
     return NextResponse.json(course);
   } catch (error) {
+    console.error(error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -44,9 +45,9 @@ export async function GET(
 // PUT - Update course by ID
 export async function PUT(
   request: Request,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
-  const id = params.courseId;
+  const id = (await params).courseId;
   try {
     const body = await request.json();
 
@@ -77,7 +78,9 @@ export async function PUT(
           id: {
             notIn:
               body.learningObjectives
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ?.filter((obj: any) => obj.id)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .map((obj: any) => obj.id) || [],
           },
         },
@@ -89,7 +92,9 @@ export async function PUT(
           id: {
             notIn:
               body.skillsGained
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ?.filter((skill: any) => skill.id)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .map((skill: any) => skill.id) || [],
           },
         },
@@ -98,6 +103,7 @@ export async function PUT(
       // Update or create learning objectives
       const learningObjectives = body.learningObjectives
         ? await Promise.all(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
             body.learningObjectives.map((obj: any) =>
               obj.id
                 ? prisma.learningObjective.update({
@@ -117,6 +123,7 @@ export async function PUT(
       // Update or create skills gained
       const skillsGained = body.skillsGained
         ? await Promise.all(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
             body.skillsGained.map((skill: any) =>
               skill.id
                 ? prisma.skillGained.update({
@@ -140,7 +147,6 @@ export async function PUT(
           title: body.title,
           description: body.description,
           language: body.language,
-          instructor: body.instructor,
           difficultyLevel: body.difficultyLevel,
           verifiedBy: body.verifiedBy,
           totalDuration: body.totalDuration,
@@ -167,9 +173,9 @@ export async function PUT(
 // DELETE - Delete course by ID
 export async function DELETE(
   request: Request,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
-  const id = params.courseId;
+  const id = (await params).courseId;
   try {
     // Using transaction to ensure all related data is deleted
     await prisma.$transaction([

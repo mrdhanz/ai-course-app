@@ -151,7 +151,7 @@ export default function CourseDetailPage() {
             <div className="lg:col-span-2">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 border border-islamic-green/20 dark:border-soft-blue/20">
                 <h2 className="text-xl font-bold text-islamic-green dark:text-soft-blue mb-4">
-                  What You'll Learn
+                  What You&apos;ll Learn
                 </h2>
                 <ul className="space-y-3">
                   {course.learningObjectives.map((objective, index) => (

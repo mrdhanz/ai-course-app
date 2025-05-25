@@ -58,7 +58,7 @@ export function CourseList({ courses }: CourseListProps) {
               </p>
 
               <div className="mb-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Skills you'll gain:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Skills you&apos;ll gain:</p>
                 <div className="flex flex-wrap gap-1">
                   {course.skillsGained.slice(0, 3).map((skill) => (
                     <span 

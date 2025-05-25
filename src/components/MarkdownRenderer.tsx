@@ -84,22 +84,27 @@ const reactNodeToString = (node: React.ReactNode): string => {
   if (typeof node === 'string') return node
   if (typeof node === 'number') return String(node)
   if (Array.isArray(node)) return node.map(reactNodeToString).join('')
-  if (React.isValidElement(node)) {
-    // @ts-ignore - children prop exists on ReactElement
-    return reactNodeToString(node.props.children)
+  if (React.isValidElement(node) && node.props && typeof node.props === 'object' && 'children' in node.props ) {
+    return reactNodeToString(node.props.children as React.ReactNode)
   }
   return ''
 }
 
 export function MarkdownRenderer({ content, isGenerated, className }: MarkdownRendererProps) {
   const {theme} = useTheme();
+  // Fix: Initialize useState with a valid state, e.g., false
+  const [copied, setCopied] = useState(false)
   useEffect(() => {
     const renderMermaid = () => {
-      // @ts-ignore
+
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore @ts-expect-error
       if (typeof window !== 'undefined' && window.mermaid) {
-      // @ts-ignore
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore @ts-expect-error
         window.mermaid.initialize({ startOnLoad: true });
-      // @ts-ignore
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore @ts-expect-error
         window.mermaid.contentLoaded(); // Re-scans for mermaid diagrams
       } else {
         // If mermaid isn't ready yet, try again
@@ -127,36 +132,34 @@ export function MarkdownRenderer({ content, isGenerated, className }: MarkdownRe
         // Pass the hljs instance directly to rehypeHighlight
         rehypePlugins={[[rehypeHighlight, { highlight: hljs }], rehypeKatex, rehypeRaw]}
         components={{
-          p: ({ node, ...props }) => (
+          p: ({ ...props }) => (
             <p className="mb-4 leading-relaxed" {...props} />
           ),
-          h1: ({ node, ...props }) => (
+          h1: ({ ...props }) => (
             <h1 className="text-3xl font-bold mb-4 mt-8" {...props} />
           ),
-          h2: ({ node, ...props }) => (
+          h2: ({ ...props }) => (
             <h2 className="text-2xl font-bold mb-3 mt-6" {...props} />
           ),
-          h3: ({ node, ...props }) => (
+          h3: ({ ...props }) => (
             <h3 className="text-xl font-bold mb-2 mt-4" {...props} />
           ),
-          ul: ({ node, ...props }) => (
+          ul: ({ ...props }) => (
             <ul className="list-disc pl-6 mb-4" {...props} />
           ),
-          ol: ({ node, ...props }) => (
+          ol: ({ ...props }) => (
             <ol className="list-decimal pl-6 mb-4" {...props} />
           ),
-          li: ({ node, ...props }) => (
+          li: ({ ...props }) => (
             <li className="mb-2" {...props} />
           ),
-          blockquote: ({ node, ...props }) => (
+          blockquote: ({ ...props }) => (
             <blockquote
               className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic mb-4"
               {...props}
             />
           ),
-          code: ({ node, className, children, ...props }) => {
-            // Fix: Initialize useState with a valid state, e.g., false
-            const [copied, setCopied] = useState(false)
+          code: ({ className, children, ...props }) => {
 
             const copyToClipboard = () => {
               // Ensure children is not empty before trying to copy
@@ -214,7 +217,7 @@ export function MarkdownRenderer({ content, isGenerated, className }: MarkdownRe
               </div>
             )
           },
-          a: ({ node, ...props }) => (
+          a: ({ ...props }) => (
             <a
               className="text-blue-600 dark:text-blue-400 hover:underline"
               target="_blank"
@@ -222,18 +225,18 @@ export function MarkdownRenderer({ content, isGenerated, className }: MarkdownRe
               {...props}
             />
           ),
-          table: ({ node, ...props }) => (
+          table: ({ ...props }) => (
             <div className="overflow-x-auto">
               <table className="min-w-full mb-4" {...props} />
             </div>
           ),
-          th: ({ node, ...props }) => (
+          th: ({ ...props }) => (
             <th
               className="border px-4 py-2 text-left bg-gray-100 dark:bg-gray-800"
               {...props}
             />
           ),
-          td: ({ node, ...props }) => (
+          td: ({ ...props }) => (
             <td className="border px-4 py-2" {...props} />
           ),
         }}

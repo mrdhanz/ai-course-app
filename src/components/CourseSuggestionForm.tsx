@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { courseSuggestionSchema, CourseSuggestionInput, courseSuggestionSelectedSchema } from "@/validations/course-suggestion";
+import { courseSuggestionSchema, CourseSuggestionInput } from "@/validations/course-suggestion";
 import { Button } from "@/components/ui/button";
 import {
     Form,
@@ -29,12 +29,12 @@ import { languageMap } from "@/types/language";
 import { useSearchParams } from "next/navigation";
 
 export function CourseSuggestionForm() {
+    const params = useSearchParams();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGeneratingFullCourse, setIsGeneratingFullCourse] = useState(false);
     const [suggestions, setSuggestions] = useState<CourseSuggestion[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
-    const params = useSearchParams();
 
     const form = useForm<CourseSuggestionInput>({
         resolver: zodResolver(courseSuggestionSchema),

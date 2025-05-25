@@ -26,10 +26,6 @@ interface GenerateContentRequest {
   format: string;
 }
 
-interface GenerateContentResponse {
-  text: string;
-}
-
 export default function CourseLearnPage() {
   const { theme, setTheme } = useTheme();
   const { courseId } = useParams()

@@ -1,25 +1,27 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+interface RequestParams { courseId: string; moduleId: string }
+
 // POST - Create new lesson
 export async function POST(
   request: Request,
-  { params }: { params: { courseId: string; moduleId: string } }
+  { params }: { params: Promise<RequestParams> }
 ) {
-  const { courseId, moduleId } = params;
+  const { courseId, moduleId } = await params;
 
   try {
     const body = await request.json();
 
     // Verify module belongs to course
-    const module = await prisma.module.findFirst({
+    const modul = await prisma.module.findFirst({
       where: {
         id: moduleId,
         courseId: courseId,
       },
     });
 
-    if (!module) {
+    if (!modul) {
       return NextResponse.json(
         { error: "Module not found in this course" },
         { status: 404 }
@@ -47,20 +49,20 @@ export async function POST(
 // GET - List all lessons in module
 export async function GET(
   request: Request,
-  { params }: { params: { courseId: string; moduleId: string } }
+  { params }: { params: Promise<RequestParams> }
 ) {
-  const { courseId, moduleId } = params;
+  const { courseId, moduleId } = await params;
 
   try {
     // Verify module belongs to course
-    const module = await prisma.module.findFirst({
+    const modul = await prisma.module.findFirst({
       where: {
         id: moduleId,
         courseId: courseId,
       },
     });
 
-    if (!module) {
+    if (!modul) {
       return NextResponse.json(
         { error: "Module not found in this course" },
         { status: 404 }

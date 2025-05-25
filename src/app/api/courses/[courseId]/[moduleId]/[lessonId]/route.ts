@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
+
+interface RequestParams { courseId: string; moduleId: string; lessonId: string }
 
 // Helper function to verify course-module-lesson relationship
 async function verifyLessonRelationship(
@@ -7,6 +9,7 @@ async function verifyLessonRelationship(
   moduleId: string,
   lessonId?: string
 ) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const whereCondition: any = {
     id: moduleId,
     courseId: courseId,
@@ -18,7 +21,7 @@ async function verifyLessonRelationship(
     };
   }
 
-  const module = await prisma.module.findFirst({
+  const modul = await prisma.module.findFirst({
     where: whereCondition,
     include: lessonId
       ? {
@@ -31,28 +34,29 @@ async function verifyLessonRelationship(
       },
   });
 
-  return module;
+  return modul;
 }
 
 // GET - Get single lesson
 export async function GET(
-  request: Request,
-  { params }: { params: { courseId: string; moduleId: string; lessonId: string } }
+  request: NextRequest,
+  { params }: { params: Promise<RequestParams> }
 ) {
-  const { courseId, moduleId, lessonId } = params;
-
+  // Await params to get the actual object
+  const { courseId, moduleId, lessonId } = await params;
   try {
-    const module = await verifyLessonRelationship(courseId, moduleId, lessonId);
+    const modul = await verifyLessonRelationship(courseId, moduleId, lessonId);
 
-    if (!module || !module.lessons?.length) {
+    if (!modul || !modul.lessons?.length) {
       return NextResponse.json(
         { error: "Lesson not found in this module and course" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(module.lessons[0]);
+    return NextResponse.json(modul.lessons[0]);
   } catch (error) {
+    console.error(error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -63,15 +67,15 @@ export async function GET(
 // PUT - Update lesson
 export async function PUT(
   request: Request,
-  { params }: { params: { courseId: string; moduleId: string; lessonId: string } }
+  { params }: { params: Promise<RequestParams> }
 ) {
-  const { courseId, moduleId, lessonId } = params;
+  const { courseId, moduleId, lessonId } = await params;
 
   try {
     const body = await request.json();
-    const module = await verifyLessonRelationship(courseId, moduleId, lessonId);
+    const modul = await verifyLessonRelationship(courseId, moduleId, lessonId);
 
-    if (!module || !module.lessons?.length) {
+    if (!modul || !modul.lessons?.length) {
       return NextResponse.json(
         { error: "Lesson not found in this module and course" },
         { status: 404 }
@@ -99,14 +103,14 @@ export async function PUT(
 // DELETE - Delete lesson
 export async function DELETE(
   request: Request,
-  { params }: { params: { courseId: string; moduleId: string; lessonId: string } }
+  { params }: { params: Promise<RequestParams> }
 ) {
-  const { courseId, moduleId, lessonId } = params;
+  const { courseId, moduleId, lessonId } = await params;
 
   try {
-    const module = await verifyLessonRelationship(courseId, moduleId, lessonId);
+    const modul = await verifyLessonRelationship(courseId, moduleId, lessonId);
 
-    if (!module || !module.lessons?.length) {
+    if (!modul || !modul.lessons?.length) {
       return NextResponse.json(
         { error: "Lesson not found in this module and course" },
         { status: 404 }

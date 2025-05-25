@@ -44,9 +44,9 @@ export function CourseCard({ course }: CourseCardProps) {
         </p>
 
         <div className="mb-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Skills you'll gain:</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Skills you&apos;ll gain:</p>
           <div className="flex flex-wrap gap-1">
-            {course.skillsGained.slice(0, 3).map((skill, i) => (
+            {course.skillsGained.slice(0, 3).map((skill) => (
               <span 
                 key={skill.id} 
                 className="text-xs bg-islamic-green/10 dark:bg-soft-blue/10 text-islamic-green dark:text-soft-blue px-2 py-1 rounded"
