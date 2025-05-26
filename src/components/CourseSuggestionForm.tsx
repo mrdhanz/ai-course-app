@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea"; // Still useful for optional detailed input
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useState, useRef, useEffect } from "react"; // Added useRef and useEffect for focus
+import { useState, useEffect } from "react"; // Added useRef and useEffect for focus
 import { CourseSuggestion, CourseSuggestionsResponse } from "@/types/course-suggestion";
 import { Loader2, Search } from "lucide-react"; // Added Search icon
 import { languageMap } from "@/types/language";
@@ -52,7 +52,7 @@ export function CourseSuggestionForm() {
     useEffect(() => {
         if(form)
             form.setFocus('subject');
-    }, []);
+    }, [form]);
 
     async function onSubmit(data: CourseSuggestionInput) {
         try {

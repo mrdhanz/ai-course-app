@@ -8,7 +8,6 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw';
 import 'katex/dist/katex.min.css'
-import hljs from 'highlight.js'//'highlight.js/styles/atom-one-dark.css'
 import { cn } from '@/lib/utils' // Assuming this is for tailwind-merge or similar
 import Mermaid, { fixCommonErrors } from './MermaidChart'
 import { useTheme } from 'next-themes'
@@ -47,7 +46,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
       const existingLink = document.getElementById(linkId) as HTMLLinkElement;
       const isDarkMode = theme === 'dark'; // Assuming 'dark' class is on <html> or <body>
 
-      let w = isDarkMode ? 'atom-one-dark.css' : 'atom-one-light.css'; // Choose your light theme
+      const w = isDarkMode ? 'atom-one-dark.css' : 'atom-one-light.css'; // Choose your light theme
 
       if (existingLink) {
         existingLink.href = `/styles/${w}`; // Update existing link

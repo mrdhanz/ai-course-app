@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Lora, Amiri_Quran, Noto_Sans_Arabic } from "next/font/google";
+import { Inter, Lora, Noto_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/providers/theme-provider";
 
@@ -14,13 +14,6 @@ const lora = Lora({
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
-  display: 'swap',
-});
-
-const amiri = Amiri_Quran({
-  subsets: ['arabic'],
-  variable: '--font-amiri',
-  weight: "400",
   display: 'swap',
 });
 
