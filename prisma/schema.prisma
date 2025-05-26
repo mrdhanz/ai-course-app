@@ -42,6 +42,7 @@ model SkillGained {
 
 model Module {
   id            String   @id @default(cuid())
+  no            Int?
   title         String
   description   String
   durationHours Int
@@ -54,6 +55,7 @@ model Module {
 
 model Lesson {
   id        String   @id @default(cuid())
+  no        Int?
   title     String
   content   String?
   module    Module   @relation(fields: [moduleId], references: [id])

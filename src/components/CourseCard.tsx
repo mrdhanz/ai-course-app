@@ -64,7 +64,7 @@ export function CourseCard({ course }: CourseCardProps) {
 
         <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <span>{languageMap[course.language]}</span>
-          <span>Verified by {course.verifiedBy}</span>
+          {/* <span>Verified by {course.verifiedBy}</span> */}
         </div>
       </div>
     </div>

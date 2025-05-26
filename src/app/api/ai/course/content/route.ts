@@ -6,9 +6,11 @@ interface GenerateContentRequest {
   level: string;
   verifiedBy: string;
   courseTitle: string;
+  moduleNo: number;
   moduleTitle: string;
   moduleDesc: string;
   lessonTitle: string;
+  lessonNo: number;
   lang: string;
   format: string;
 }
@@ -38,11 +40,13 @@ export async function POST(request: Request) {
     const prompt = `You are an expert writer and expert instructor. Your task is to develop comprehensive lesson content for a specific topic within a ${requestData.level}-level. 
                   Strictly The course verified by ${requestData.verifiedBy}
                   Course Context: This lesson belongs to the ${requestData.courseTitle} course, which targets absolute beginners in this context. 
-                  Module Context: This specific lesson is part of the ${requestData.moduleTitle} module, which focuses on mastering ${requestData.moduleDesc}. 
-                  Lesson Details: Lesson Title: ${requestData.lessonTitle} 
+                  Module Context: This specific lesson is part of the ${requestData.moduleTitle} module, no. module ${requestData.moduleNo}, which focuses on mastering ${requestData.moduleDesc}. 
+                  Lesson Details: 
+                  Lesson No: ${requestData.lessonNo}
+                  Lesson Title: ${requestData.lessonTitle} 
                   Language: ${requestData.lang} 
-                  For specific content like charts, graphs, or even architectural designs, use Mermaid version 10.9.3 in code blocks, strictly the syntax no error, don't use () in title or flow name, graph name.
                   Format Output: ${requestData.format}, using clear headings, bullet points, and code blocks (where appropriate for conceptual examples). 
+                  (Strictly only for syntax mermaid): For specific content like charts, graphs, or even architectural designs, use Mermaid version 10.9.3 in code blocks and strictly follow mermaid.js.org/syntax rules.
                   Strictly the answer only the lesson content`;
 
     const streamingResponse = await model.generateContentStream(prompt);

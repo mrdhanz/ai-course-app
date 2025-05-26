@@ -26,10 +26,11 @@ import { useState } from "react";
 import { CourseSuggestion, CourseSuggestionsResponse } from "@/types/course-suggestion";
 import { Loader2 } from "lucide-react";
 import { languageMap } from "@/types/language";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function CourseSuggestionForm() {
     const params = useSearchParams();
+    const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGeneratingFullCourse, setIsGeneratingFullCourse] = useState(false);
     const [suggestions, setSuggestions] = useState<CourseSuggestion[]>([]);
@@ -112,9 +113,7 @@ export function CourseSuggestionForm() {
             }
 
             const result = await response.json();
-            // Handle the result (e.g., display in a modal or new page)
-            console.log(result);
-            await fetch('/api/courses', {
+            const res = await fetch('/api/courses', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -122,6 +121,12 @@ export function CourseSuggestionForm() {
                 body: JSON.stringify(result)
             })
 
+            if (!res.ok) {
+                throw new Error('Failed to generate full course');
+            }
+
+            const course = await res.json();
+            router.push(`/courses/${course.id}`)
         } catch (err) {
             console.error(err);
             setError("Failed to generate full course details. Please try again.");

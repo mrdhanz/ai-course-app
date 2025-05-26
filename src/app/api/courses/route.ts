@@ -4,34 +4,45 @@ import prisma from "@/lib/prisma";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    
+
     // Pagination parameters
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
 
     // Sorting parameters
-    const sortBy = searchParams.get('sortBy') || 'createdAt';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const sortBy = searchParams.get("sortBy") || "createdAt";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
 
     // Count total courses for pagination metadata
     const totalCourses = await prisma.course.count();
-    const difficulty = searchParams.get('difficulty');
-    const language = searchParams.get('lang');
-    const search = searchParams.get('search');
-    
+    const difficulty = searchParams.get("difficulty");
+    const language = searchParams.get("lang");
+    const search = searchParams.get("search");
+
     // Fetch paginated courses
     const courses = await prisma.course.findMany({
       where: {
-        title: search ? {contains: search }: undefined,
-        description: search ? {contains: search }: undefined,
-        difficultyLevel: difficulty && difficulty !== 'all' ? difficulty : undefined,
-        language: language && language !== 'all' ? language : undefined,
+        difficultyLevel:
+          difficulty && difficulty !== "all" ? difficulty : undefined,
+        language: language && language !== "all" ? language : undefined,
+        OR:
+          search && search?.length > 0
+            ? [
+                {
+                  title: { contains: search },
+                },
+                { description: { contains: search } },
+                {
+                  skillsGained: { some: { skill: { contains: search } } },
+                },
+              ]
+            : undefined,
       },
       skip,
       take: limit,
       orderBy: {
-        [sortBy]: sortOrder
+        [sortBy]: sortOrder,
       },
       include: {
         skillsGained: true,
@@ -46,8 +57,8 @@ export async function GET(request: Request) {
         currentPage: page,
         perPage: limit,
         hasNextPage: page < Math.ceil(totalCourses / limit),
-        hasPreviousPage: page > 1
-      }
+        hasPreviousPage: page > 1,
+      },
     });
   } catch (error) {
     console.error("Error fetching courses:", error);
@@ -61,7 +72,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    
+
     const course = await prisma.course.create({
       data: {
         title: body.title,
@@ -71,28 +82,31 @@ export async function POST(request: Request) {
         verifiedBy: body.verifiedBy,
         totalDuration: body.totalDuration,
         learningObjectives: {
+          create:
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          create: body.learningObjective?.map((obj: any) => ({
-            objective: obj,
-          })) || [],
+            body.learningObjective?.map((obj: any) => ({
+              objective: obj,
+            })) || [],
         },
         skillsGained: {
+          create:
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          create: body.skillsGain?.map((skill: any) => ({
-            skill: skill,
-          })) || [],
+            body.skillsGain?.map((skill: any) => ({
+              skill: skill,
+            })) || [],
         },
         modules: {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          create: body.modules.map((module: any) => ({
+          create: body.modules.map((module: any, nom: any) => ({
             title: module.title,
+            no: nom + 1,
             description: module.description,
             durationHours: module.durationHours,
             lessons: {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              create: module.lessons.map((lesson: any) => ({
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              create: module.lessons.map((lesson: any, no: any) => ({
                 title: lesson,
-                content: null,
+                no: no + 1,
               })),
             },
           })),
@@ -108,7 +122,7 @@ export async function POST(request: Request) {
         },
       },
     });
-    
+
     return NextResponse.json(course, { status: 201 });
   } catch (error) {
     console.error(error);

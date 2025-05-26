@@ -18,8 +18,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AI Course App",
-  description: "Learn with AI-powered courses",
+  title: "Course Search Engine",
+  description: "Course Search Engine and Learn with AI-powered courses",
 };
 
 export default function RootLayout({

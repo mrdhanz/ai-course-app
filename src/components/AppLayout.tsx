@@ -28,7 +28,7 @@ export default function AppLayout({children}: {children: React.ReactNode}) {
             {/* Logo */}
             <div className="flex-shrink-0">
               <h1 className="text-xl font-bold text-islamic-green dark:text-soft-blue">
-                AI Course App
+                Course Search Engine
               </h1>
             </div>
 

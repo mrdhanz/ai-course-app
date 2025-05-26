@@ -2,14 +2,22 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Course, Lesson, Module } from '@/types/course'
 import { useTheme } from 'next-themes'
 import dynamic from "next/dynamic";
 import { MarkdownRenderer } from '@/components/MarkdownRenderer'
+
+// Import Shadcn UI Accordion components
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 
 const SunIcon = dynamic(() => import('@/components/SunIcon'), { ssr: false })
 const MoonIcon = dynamic(() => import('@/components/MoonIcon'), { ssr: false })
@@ -19,22 +27,29 @@ interface GenerateContentRequest {
   verifiedBy: string;
   courseTitle: string;
   courseDesc: string;
+  moduleNo: number;
   moduleTitle: string;
   moduleDesc: string;
   lessonTitle: string;
+  lessonNo: number;
   lang: string;
   format: string;
 }
 
 export default function CourseLearnPage() {
   const { theme, setTheme } = useTheme();
-  const { courseId } = useParams()
+  const router = useRouter();
+  const { courseId } = useParams();
+  const params = useSearchParams();
   const [course, setCourse] = useState<Course | null>(null)
   const [currentModule, setCurrentModule] = useState<Module | null>(null)
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null)
   const [loading, setLoading] = useState(true)
   const [contentLoading, setContentLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // State for controlling the open module in the accordion
+  const [openModuleAccordion, setOpenModuleAccordion] = useState<string | undefined>('module-' + params.get('module') || undefined);
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -48,9 +63,11 @@ export default function CourseLearnPage() {
 
         // Set initial module and lesson
         if (data.modules?.length > 0) {
-          setCurrentModule(data.modules[0])
-          if (data.modules[0].lessons?.length > 0) {
-            setCurrentLesson(data.modules[0].lessons[0])
+          const initialModule = data.modules[0];
+          setCurrentModule(initialModule)
+          setOpenModuleAccordion(`module-${initialModule.id}`); // Open the first module by default
+          if (initialModule.lessons?.length > 0) {
+            setCurrentLesson(initialModule.lessons[0])
           }
         }
       } catch (err) {
@@ -70,16 +87,39 @@ export default function CourseLearnPage() {
       try {
         setContentLoading(true)
         setError(null)
-        
+
         const moduleIndex = course.modules.findIndex(m => m.id === currentModule.id)
         if (moduleIndex === -1) return
+        const lessonIndex = course.modules[moduleIndex].lessons.findIndex(m => m.id === currentLesson.id)
+        if (lessonIndex === -1) return
+        
+        if (currentModule?.id && currentLesson?.id) {
+          try {
+            const res = await fetch(`/api/courses/${course.id}/${currentModule.id}/${currentLesson.id}`, {
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            })
+            if(res.ok){
+              const lesson = await res.json() as Lesson
+              if(lesson.content){
+                setCurrentLesson(lesson)
+                return;
+              }
+            }
+          } catch (er){
+            console.error(er)
+          }
+        }
 
         const body: GenerateContentRequest = {
           courseTitle: course.title,
           courseDesc: course.description,
           verifiedBy: course.verifiedBy,
+          moduleNo: moduleIndex+1,
           moduleTitle: currentModule.title,
           moduleDesc: currentModule.description,
+          lessonNo: lessonIndex+1,
           lessonTitle: currentLesson.title,
           level: course.difficultyLevel,
           lang: course.language,
@@ -92,7 +132,7 @@ export default function CourseLearnPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(body)
-        }) 
+        })
         if (!res.ok) {
           const errorData = await res.json();
           throw new Error(errorData.error || 'Failed to generate content');
@@ -120,6 +160,19 @@ export default function CourseLearnPage() {
             content: accumulatedContent
           }))
         }
+
+        if (done && currentModule?.id && currentLesson && accumulatedContent) {
+          fetch(`/api/courses/${course.id}/${currentModule?.id}/${currentLesson?.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: body.lessonTitle,
+              content: accumulatedContent
+            })
+          })
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load lesson content')
       } finally {
@@ -144,7 +197,7 @@ export default function CourseLearnPage() {
   return (
     <div className="flex flex-col min-h-screen bg-parchment dark:bg-dark-gray">
       {/* Header */}
-      <header className="border-b border-islamic-green/20 dark:border-soft-blue/20 p-4">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-b border-islamic-green/20 dark:border-soft-blue/20 p-4">
         <div className="container mx-auto flex justify-between items-center">
           <Link href={`/courses/${courseId}`} className="text-islamic-green dark:text-soft-blue hover:underline">
             <ChevronLeft className="inline mr-1" /> Back to course
@@ -168,73 +221,67 @@ export default function CourseLearnPage() {
         </div>
       </header>
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 pt-16"> {/* Add pt-16 to main content to offset fixed header */}
         {/* Sidebar */}
-        <aside className="w-64 border-r border-islamic-green/20 dark:border-soft-blue/20 p-4 overflow-y-auto">
-          <div className="mb-6">
-            <h3 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Course Modules</h3>
-            <div className="space-y-1">
-              {course.modules?.map((module) => (
-                <div
-                  key={module.id}
-                  className={`p-2 rounded cursor-pointer ${currentModule?.id === module.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                  onClick={() => {
-                    setCurrentModule(module)
-                    if (module.lessons?.length > 0) {
-                      handleLessonChange(module.lessons[0])
-                    }
-                  }}
+        <aside className="fixed top-16 left-0 bottom-0 w-64 border-r border-islamic-green/20 dark:border-soft-blue/20 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray z-40">
+          <h3 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Course Modules</h3>
+          <Accordion
+            type="single"
+            collapsible
+            value={openModuleAccordion}
+            onValueChange={setOpenModuleAccordion}
+            className="w-full"
+          >
+            {course.modules?.map((module) => (
+              <AccordionItem key={module.id} value={`module-${module.id}`}>
+                <AccordionTrigger
+                  className={`p-2 rounded hover:no-underline ${currentModule?.id === module.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                  // Removed onClick from here to let AccordionTrigger handle the open/close
                 >
-                  <div className="font-medium">{module.title}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {module.lessons?.length} lessons • {module.durationHours} hours
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {currentModule && (
-            <div>
-              <h4 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Lessons</h4>
-              <div className="space-y-1">
-                {currentModule.lessons?.map((lesson) => (
-                  <div
-                    key={lesson.id}
-                    className={`p-2 rounded cursor-pointer ${currentLesson?.id === lesson.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                    onClick={() => handleLessonChange(lesson)}
-                  >
-                    <div className="flex items-center">
-                      <div className={`w-4 h-4 rounded-full mr-2 ${currentLesson?.id === lesson.id ? 'bg-islamic-green dark:bg-soft-blue' : 'border border-gray-400'}`} />
-                      <span>{lesson.title}</span>
+                  <div className="flex flex-col text-left">
+                    <div className="font-medium">{module.title}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      {module.lessons?.length} lessons • {module.durationHours} hours
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </AccordionTrigger>
+                <AccordionContent className="pb-0">
+                  {/* Only render lessons for the currently selected module AND if the module is open */}
+                  {openModuleAccordion === `module-${module.id}` && (
+                    <div className="pl-4 py-2 space-y-1">
+                      <h4 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Lessons</h4>
+                      {module.lessons?.map((lesson) => (
+                        <div
+                          key={lesson.id}
+                          className={`p-2 rounded cursor-pointer flex items-center ${currentLesson?.id === lesson.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                          onClick={() => {
+                            setCurrentModule(module); // Ensure the module is set if a lesson is clicked directly
+                            handleLessonChange(lesson);
+                            router.push(`/courses/${courseId}/learn?module=${module.id}&lesson=${lesson.id}`)
+                          }}
+                        >
+                          <div className={`w-4 h-4 rounded-full mr-2 ${currentLesson?.id === lesson.id ? 'bg-islamic-green dark:bg-soft-blue' : 'border border-gray-400'}`} />
+                          <span>{lesson.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-6 overflow-y-auto">
+        <main className="flex-1 ml-64 p-6 overflow-y-auto"> {/* Add ml-64 to main content to offset fixed sidebar */}
           {contentLoading ? (
             <div className="flex justify-center p-8">Loading lesson content...</div>
-          ) :<></> }
+          ) : <></>}
           {currentLesson ? (
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-20xl mx-auto">
               {/* Lesson Content */}
               <div className="prose dark:prose-invert max-w-none">
-                <MarkdownRenderer isGenerated={contentLoading} content={currentLesson.content || (!contentLoading ? 'No content available for this lesson.' : '')}/>
-              </div>
-
-              {/* Navigation */}
-              <div className="flex justify-between mt-8">
-                <Button variant="outline">
-                  <ChevronLeft className="mr-2 h-4 w-4" /> Previous
-                </Button>
-                <Button className="bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90">
-                  Next <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
+                <MarkdownRenderer isGenerated={contentLoading} content={currentLesson.content || (!contentLoading ? 'No content available for this lesson.' : '')} />
               </div>
             </div>
           ) : (

@@ -91,3 +91,38 @@ body {
     @apply bg-background text-foreground;
  }
 }
+
+.mermaid-container {
+  width: 100%;
+  overflow: auto;
+  margin: 1rem 0;
+}
+
+.mermaid {
+  width: 100%;
+  height: auto;
+  min-width: 300px; /* Prevent too small on mobile */
+  font-size: clamp(12px, 1.5vw, 16px) !important;
+}
+
+.mermaid text {
+  font-size: inherit !important;
+}
+
+/* Responsive text wrapping */
+.mermaid .label text {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+}
+
+/* SVG-specific adjustments */
+.mermaid svg foreignObject {
+  overflow: visible !important;
+  pointer-events: none !important;
+}
+
+.mermaid svg foreignObject div {
+  display: inline-block;
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+}

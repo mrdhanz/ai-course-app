@@ -1,77 +1,16 @@
 // components/MarkdownRenderer.tsx
 'use client'
 
-import React, { useState, useEffect } from 'react' // Import useEffect
+import React, { useState } from 'react' // Import useEffect
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw';
-import Script from 'next/script';
 import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.css' // Or your preferred highlight.js theme
 import { cn } from '@/lib/utils' // Assuming this is for tailwind-merge or similar
-import hljs from 'highlight.js/lib/core'
-import dart from 'highlight.js/lib/languages/dart' // Import Dart language definition
-import javascript from 'highlight.js/lib/languages/javascript'; // Example: Add another common language
-import typescript from 'highlight.js/lib/languages/typescript';
-import python from 'highlight.js/lib/languages/python';
-import rust from 'highlight.js/lib/languages/rust';
-import go from 'highlight.js/lib/languages/go';
-import cpp from 'highlight.js/lib/languages/cpp';
-import csharp from 'highlight.js/lib/languages/csharp';
-import java from 'highlight.js/lib/languages/java';
-import php from 'highlight.js/lib/languages/php';
-import ruby from 'highlight.js/lib/languages/ruby';
-import swift from 'highlight.js/lib/languages/swift';
-import kotlin from 'highlight.js/lib/languages/kotlin';
-import sql from 'highlight.js/lib/languages/sql';
-import json from 'highlight.js/lib/languages/json';
-import yaml from 'highlight.js/lib/languages/yaml';
-import xml from 'highlight.js/lib/languages/xml';
-import bash from 'highlight.js/lib/languages/bash';
-import powershell from 'highlight.js/lib/languages/powershell';
-import diff from 'highlight.js/lib/languages/diff';
-import graphql from 'highlight.js/lib/languages/graphql';
-import markdown from 'highlight.js/lib/languages/markdown';
-import css from 'highlight.js/lib/languages/css';
-import scss from 'highlight.js/lib/languages/scss';
-import less from 'highlight.js/lib/languages/less';
-import html from 'highlight.js/lib/languages/xml'; // HTML often uses XML for highlighting
-import plaintext from 'highlight.js/lib/languages/plaintext';
-import { useTheme } from 'next-themes'
-
-
-// Register languages once when the component file is processed on the client side
-// This ensures they are registered before rehypeHighlight tries to use them.
-hljs.registerLanguage('dart', dart);
-hljs.registerLanguage('javascript', javascript);
-hljs.registerLanguage('typescript', typescript);
-hljs.registerLanguage('python', python);
-hljs.registerLanguage('rust', rust);
-hljs.registerLanguage('go', go);
-hljs.registerLanguage('cpp', cpp);
-hljs.registerLanguage('csharp', csharp);
-hljs.registerLanguage('java', java);
-hljs.registerLanguage('php', php);
-hljs.registerLanguage('ruby', ruby);
-hljs.registerLanguage('swift', swift);
-hljs.registerLanguage('kotlin', kotlin);
-hljs.registerLanguage('sql', sql);
-hljs.registerLanguage('json', json);
-hljs.registerLanguage('yaml', yaml);
-hljs.registerLanguage('xml', xml);
-hljs.registerLanguage('bash', bash);
-hljs.registerLanguage('powershell', powershell);
-hljs.registerLanguage('diff', diff);
-hljs.registerLanguage('graphql', graphql);
-hljs.registerLanguage('markdown', markdown);
-hljs.registerLanguage('css', css);
-hljs.registerLanguage('scss', scss);
-hljs.registerLanguage('less', less);
-hljs.registerLanguage('html', html); // Use xml for html
-hljs.registerLanguage('plaintext', plaintext);
-
+import Mermaid, { fixCommonErrors } from './MermaidChart'
 
 interface MarkdownRendererProps {
   content: string
@@ -90,47 +29,15 @@ const reactNodeToString = (node: React.ReactNode): string => {
   return ''
 }
 
-export function MarkdownRenderer({ content, isGenerated, className }: MarkdownRendererProps) {
-  const {theme} = useTheme();
+export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   // Fix: Initialize useState with a valid state, e.g., false
   const [copied, setCopied] = useState(false)
-  useEffect(() => {
-    const renderMermaid = () => {
-
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore @ts-expect-error
-      if (typeof window !== 'undefined' && window.mermaid) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore @ts-expect-error
-        window.mermaid.initialize({ startOnLoad: true });
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore @ts-expect-error
-        window.mermaid.contentLoaded(); // Re-scans for mermaid diagrams
-      } else {
-        // If mermaid isn't ready yet, try again
-        setTimeout(renderMermaid, 100);
-      }
-    };
-
-    if(isGenerated || theme)
-      renderMermaid();
-
-    // You might also consider using a custom renderer for code blocks
-    // within ReactMarkdown to have more control over each diagram.
-  }, [theme, isGenerated]); // Re-run if content changes
   return (
     <div className={cn('prose dark:prose-invert max-w-none', className)}>
-      {/* Load Mermaid.js from CDN or local bundle */}
-      <Script
-        src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" // Use a specific version
-        strategy="afterInteractive" // Load after hydration, in the browser
-        onError={(e) => console.error('Mermaid script failed to load', e)}
-      />
-
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         // Pass the hljs instance directly to rehypeHighlight
-        rehypePlugins={[[rehypeHighlight, { highlight: hljs }], rehypeKatex, rehypeRaw]}
+        rehypePlugins={[rehypeHighlight, rehypeKatex, rehypeRaw]}
         components={{
           p: ({ ...props }) => (
             <p className="mb-4 leading-relaxed" {...props} />
@@ -171,18 +78,15 @@ export function MarkdownRenderer({ content, isGenerated, className }: MarkdownRe
               }
             }
             const match = /language-(\w+)/.exec(className || '')
-            if (match?.[1] === 'mermaid') {
-              // Mermaid expects content inside <pre class="mermaid">
-              return (
-                <pre className="mermaid">
-                  {String(children).replace(/\n$/, '')}
-                </pre>
-              );
-            }
             // Check if this is inline code by looking at the parent node
             // rehype-highlight adds `hljs` class to code blocks. Inline code doesn't get this.
             // A more robust check might be `match` for block code or checking for `node.properties.className?.includes('hljs')`
             const isBlock = match && match[1] && className?.includes('hljs');
+            if (isBlock && match && match?.[1] === 'mermaid') {
+              return (
+                <Mermaid chart={fixCommonErrors(String(children))} />
+              );
+            }
 
             if (!isBlock) { // If it's not a block code, treat as inline
               return (

@@ -22,8 +22,10 @@ export async function GET(
                 moduleId: true,
                 // Explicitly exclude content field
               },
+              orderBy: { no: "asc" },
             },
           },
+          orderBy: { no: "asc" },
         },
       },
     });
@@ -78,9 +80,9 @@ export async function PUT(
           id: {
             notIn:
               body.learningObjectives
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ?.filter((obj: any) => obj.id)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .map((obj: any) => obj.id) || [],
           },
         },
@@ -92,9 +94,9 @@ export async function PUT(
           id: {
             notIn:
               body.skillsGained
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ?.filter((skill: any) => skill.id)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .map((skill: any) => skill.id) || [],
           },
         },
@@ -103,7 +105,7 @@ export async function PUT(
       // Update or create learning objectives
       const learningObjectives = body.learningObjectives
         ? await Promise.all(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             body.learningObjectives.map((obj: any) =>
               obj.id
                 ? prisma.learningObjective.update({
@@ -123,7 +125,7 @@ export async function PUT(
       // Update or create skills gained
       const skillsGained = body.skillsGained
         ? await Promise.all(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             body.skillsGained.map((skill: any) =>
               skill.id
                 ? prisma.skillGained.update({
