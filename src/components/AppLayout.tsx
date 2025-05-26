@@ -52,7 +52,7 @@ export default function AppLayout({children}: {children: React.ReactNode}) {
             {/* Theme Toggle */}
             <div className="flex items-center">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 className="text-islamic-green dark:text-soft-blue border-islamic-green/20 dark:border-soft-blue/20"

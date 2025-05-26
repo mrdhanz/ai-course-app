@@ -1,16 +1,18 @@
 // components/MarkdownRenderer.tsx
 'use client'
 
-import React, { useState } from 'react' // Import useEffect
+import React, { useEffect, useState } from 'react' // Import useEffect
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw';
 import 'katex/dist/katex.min.css'
-import 'highlight.js/styles/github-dark.css' // Or your preferred highlight.js theme
+import hljs from 'highlight.js'//'highlight.js/styles/atom-one-dark.css'
 import { cn } from '@/lib/utils' // Assuming this is for tailwind-merge or similar
 import Mermaid, { fixCommonErrors } from './MermaidChart'
+import { useTheme } from 'next-themes'
+import Link from 'next/link'
 
 interface MarkdownRendererProps {
   content: string
@@ -23,15 +25,54 @@ const reactNodeToString = (node: React.ReactNode): string => {
   if (typeof node === 'string') return node
   if (typeof node === 'number') return String(node)
   if (Array.isArray(node)) return node.map(reactNodeToString).join('')
-  if (React.isValidElement(node) && node.props && typeof node.props === 'object' && 'children' in node.props ) {
+  if (React.isValidElement(node) && node.props && typeof node.props === 'object' && 'children' in node.props) {
     return reactNodeToString(node.props.children as React.ReactNode)
   }
   return ''
 }
 
+// Function to check for Arabic characters
+const containsArabic = (text: string) => {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text)
+}
+
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+  const { theme } = useTheme();
   // Fix: Initialize useState with a valid state, e.g., false
   const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    const linkId = 'highlight-js-theme';
+
+    const applyTheme = () => {
+      const existingLink = document.getElementById(linkId) as HTMLLinkElement;
+      const isDarkMode = theme === 'dark'; // Assuming 'dark' class is on <html> or <body>
+
+      let w = isDarkMode ? 'atom-one-dark.css' : 'atom-one-light.css'; // Choose your light theme
+
+      if (existingLink) {
+        existingLink.href = `/styles/${w}`; // Update existing link
+      } else {
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = `/styles/${w}`;
+        document.head.appendChild(link);
+      }
+    };
+
+    // Apply theme on component mount
+    applyTheme();
+
+    // Set up a MutationObserver to listen for changes to the 'dark' class
+    const observer = new MutationObserver(applyTheme);
+    // Observe the <html> element for attribute changes (specifically 'class')
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    // Clean up observer on component unmount
+    return () => {
+      observer.disconnect();
+    };
+  }, [theme]); // Empty dependency array means this effect runs once on mount and cleans up on unmount
+
   return (
     <div className={cn('prose dark:prose-invert max-w-none', className)}>
       <ReactMarkdown
@@ -67,7 +108,6 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
             />
           ),
           code: ({ className, children, ...props }) => {
-
             const copyToClipboard = () => {
               // Ensure children is not empty before trying to copy
               const textToCopy = reactNodeToString(children);
@@ -78,20 +118,54 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               }
             }
             const match = /language-(\w+)/.exec(className || '')
+            if (match && match?.[1] === 'markdown') return <MarkdownRenderer content={reactNodeToString(children)} isGenerated />
             // Check if this is inline code by looking at the parent node
             // rehype-highlight adds `hljs` class to code blocks. Inline code doesn't get this.
             // A more robust check might be `match` for block code or checking for `node.properties.className?.includes('hljs')`
             const isBlock = match && match[1] && className?.includes('hljs');
+
             if (isBlock && match && match?.[1] === 'mermaid') {
               return (
                 <Mermaid chart={fixCommonErrors(String(children))} />
               );
             }
+            const isArabic = containsArabic(reactNodeToString(children));
 
-            if (!isBlock) { // If it's not a block code, treat as inline
+            if (isBlock && (match?.[1] === 'arabic' || isArabic)) {
+
+              return (
+                <div className="relative my-4">
+                  <button
+                    onClick={copyToClipboard}
+                    className="absolute left-2 top-2 p-1 rounded bg-gray-700 text-white text-xs z-[1]" // Add z-index
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                  <div className={cn(
+                    "my-6 p-6 border-2 border-green-500 rounded-lg bg-green-50 dark:bg-green-950/20",
+                    'font-arabic',
+                    "text-xl leading-relaxed text-right direction-rtl flex flex-col items-end", // Large font, RTL
+                    "quran-ayat-container rounded-lg overflow-x-auto p-4" // Custom class for additional CSS
+                  )}>
+                    {reactNodeToString(children).split('\n').map((c, key) => (<span key={key} className="block mb-2 last:mb-0 leading-relaxed">{c}</span>))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (!isBlock) { // If it's not a block code, treat as 
+              const httpHttpsLinkRegex = /^(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/[a-zA-Z0-9]+\.[^\s]{2,}|[a-zA-Z0-9]+\.[^\s]{2,})$/i;
+              if(httpHttpsLinkRegex.test(String(children))){
+                return (<Link href={String(children)} target="_blank" rel="noopener noreferrer" className="text-islamic-green dark:text-soft-blue hover:underline">{children}</Link>)
+              }
               return (
                 <code
-                  className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm"
+                  className={cn(
+                    "bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm",
+                    {
+                      'font-amiri': isArabic,
+                    }
+                  )}
                   {...props}
                 >
                   {children}
@@ -113,8 +187,8 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
                 >
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
-                <pre className="rounded-lg overflow-x-auto p-4 bg-gray-900">
-                  <code className={className} {...props}>
+                <pre className="rounded-lg overflow-x-auto p-4 bg-gray-50 dark:bg-gray-800">
+                  <code {...props}>
                     {children}
                   </code>
                 </pre>

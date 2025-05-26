@@ -16,7 +16,15 @@ const config: Config = {
   			inter: [
   				'var(--font-inter)',
                     ...fontFamily.sans
-                ]
+                ],
+			amiri: [
+				'var(--font-amiri)',
+					...fontFamily.serif
+			],
+			arabic: [
+				'var(--font-arabic)',
+					...fontFamily.serif
+			]
   		},
   		colors: {
   			parchment: '#F8F3E6',

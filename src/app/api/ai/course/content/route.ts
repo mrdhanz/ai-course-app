@@ -9,6 +9,8 @@ interface GenerateContentRequest {
   moduleNo: number;
   moduleTitle: string;
   moduleDesc: string;
+  previousLessonNo?: number;
+  previousLessonTitle?: string;
   lessonTitle: string;
   lessonNo: number;
   lang: string;
@@ -37,18 +39,41 @@ export async function POST(request: Request) {
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' });
 
-    const prompt = `You are an expert writer and expert instructor. Your task is to develop comprehensive lesson content for a specific topic within a ${requestData.level}-level. 
-                  Strictly The course verified by ${requestData.verifiedBy}
-                  Course Context: This lesson belongs to the ${requestData.courseTitle} course, which targets absolute beginners in this context. 
-                  Module Context: This specific lesson is part of the ${requestData.moduleTitle} module, no. module ${requestData.moduleNo}, which focuses on mastering ${requestData.moduleDesc}. 
-                  Lesson Details: 
-                  Lesson No: ${requestData.lessonNo}
-                  Lesson Title: ${requestData.lessonTitle} 
-                  Language: ${requestData.lang} 
-                  Format Output: ${requestData.format}, using clear headings, bullet points, and code blocks (where appropriate for conceptual examples). 
-                  (Strictly only for syntax mermaid): For specific content like charts, graphs, or even architectural designs, use Mermaid version 10.9.3 in code blocks and strictly follow mermaid.js.org/syntax rules.
-                  Strictly the answer only the lesson content`;
+const prompt = `You are an exceptionally skilled and experienced **expert writer** and **master instructor**, specializing in creating highly effective, pedagogically sound, and human-readable educational content. Your primary objective is to develop a **comprehensive, self-contained lesson** for a specific topic.
 
+**Course & Module Context:**
+This lesson is an integral part of the "${requestData.courseTitle}" course, which is meticulously designed for **absolute beginners** in this domain. The entire course content is strictly verified and endorsed by **${requestData.verifiedBy}**, ensuring utmost accuracy, clarity, and pedagogical soundness.
+
+This particular lesson belongs to **Module ${requestData.moduleNo}: "${requestData.moduleTitle}"**, a module specifically dedicated to **mastering ${requestData.moduleDesc}**.
+
+**Lesson Specifics:**
+* **Lesson Level:** ${requestData.level}
+* **Lesson Number:** ${requestData.lessonNo}
+* **Lesson Title:** "${requestData.lessonTitle}"
+* **Language:** ${requestData.lang}
+${requestData.previousLessonTitle ? `* **Building From:** This lesson builds upon the concepts introduced in **Lesson ${requestData.previousLessonNo}: "${requestData.previousLessonTitle}"**. (If applicable, connect current concepts to prior knowledge).` : ''}
+
+**Content Requirements:**
+Generate the complete lesson content, focusing on clarity, conciseness, and practical understanding for a beginner audience. The lesson should:
+1.  **Introduce the topic** clearly and engagingly, setting the stage for what will be learned, potentially linking back to the previous lesson's foundation.
+2.  **Explain core concepts** thoroughly, breaking down complex ideas into digestible segments.
+3.  Provide **conceptual examples** (code, scenarios, analogies) where appropriate to illustrate points and enhance comprehension.
+4.  Maintain a **logical and pedagogical flow** suitable for self-study, building knowledge incrementally.
+5.  Conclude with a brief summary or key takeaways.
+
+**Output Format Requirements:**
+The entire output must be presented in **${requestData.format}** format. Adhere strictly to the following structural guidelines:
+* Use **clear, hierarchical headings** (e.g., \`#\`, \`##\`, \`###\`, \`####\`) to organize content logically and improve readability.
+* Utilize **bullet points** and **numbered lists** extensively for presenting information clearly, emphasizing key points, and outlining steps.
+* Include **code blocks** (e.g., \`\`\`language\`\`\`) for any conceptual code examples, syntax demonstrations, or command-line instructions. Ensure code is well-formatted and easy to understand.
+
+**Strictly for Diagrams and Visuals (Mermaid):**
+* For any content that benefits from visual representation, such as charts, graphs, flowcharts, sequence diagrams, state diagrams, or architectural designs, you **MUST** use **Mermaid syntax**.
+* Embed Mermaid code within standard code blocks, specifically using \`\`\`mermaid\`\`\`.
+* **Crucially, adhere strictly to Mermaid version 11 syntax rules as documented on \`https://mermaid.js.org/syntax\`**. Ensure the Mermaid code is valid, accurate, and renders correctly to convey the intended visual information.
+
+**Strict Output Constraint:**
+**The answer MUST contain ONLY the complete lesson content itself.** Do NOT include any introductory or concluding remarks outside the lesson material, conversational text, or any other extraneous information. Begin directly with the lesson's title or first heading.`;
     const streamingResponse = await model.generateContentStream(prompt);
 
     // Create a ReadableStream from the async generator

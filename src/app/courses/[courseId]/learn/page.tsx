@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react' // Added X icon for close
+import { ChevronLeft, ChevronRight, Menu } from 'lucide-react'
 import Link from 'next/link'
 import { Course, Lesson, Module } from '@/types/course'
 import { useTheme } from 'next-themes'
@@ -35,10 +35,11 @@ interface GenerateContentRequest {
   level: string;
   verifiedBy: string;
   courseTitle: string;
-  courseDesc: string;
   moduleNo: number;
   moduleTitle: string;
   moduleDesc: string;
+  previousLessonNo?: number;
+  previousLessonTitle?: string;
   lessonTitle: string;
   lessonNo: number;
   lang: string;
@@ -62,8 +63,6 @@ export default function CourseLearnPage() {
   const [openModuleAccordion, setOpenModuleAccordion] = useState<string | undefined>(undefined);
   // State for mobile sidebar visibility (controlled by Sheet)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  // State for desktop sidebar visibility
-  const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true); // Default to open on desktop
 
   // Effect to fetch course data and initialize module/lesson based on URL params
   useEffect(() => {
@@ -154,12 +153,13 @@ export default function CourseLearnPage() {
         // If no existing content, generate it
         const body: GenerateContentRequest = {
           courseTitle: course.title,
-          courseDesc: course.description,
           verifiedBy: course.verifiedBy,
-          moduleNo: moduleIndex + 1,
+          moduleNo: currentModule?.no || moduleIndex + 1,
           moduleTitle: currentModule.title,
           moduleDesc: currentModule.description,
-          lessonNo: lessonIndex + 1,
+          previousLessonNo: prevLessonData?.lesson?.no || prevLessonData?.lesson?.title ? lessonIndex : undefined,
+          previousLessonTitle: prevLessonData?.lesson?.title,
+          lessonNo: currentLesson?.no || lessonIndex + 1,
           lessonTitle: currentLesson.title,
           level: course.difficultyLevel,
           lang: course.language,
@@ -234,18 +234,6 @@ export default function CourseLearnPage() {
     setIsMobileSidebarOpen(false); // Close mobile sidebar after selection
   };
 
-  // const handleModuleClick = (module: Module) => {
-  //   setCurrentModule(module);
-  //   // When a module header is clicked, if it has lessons, navigate to the first one
-  //   if (module.lessons?.length > 0) {
-  //     handleLessonChange(module.lessons[0], module);
-  //   } else {
-  //     // If module has no lessons, just update the module and clear current lesson
-  //     setCurrentLesson(null);
-  //     router.push(`/courses/${courseId}/learn?module=${module.id}`);
-  //   }
-  // };
-
   const getNextLesson = () => {
     if (!course || !currentModule || !currentLesson) return null;
 
@@ -309,8 +297,27 @@ export default function CourseLearnPage() {
 
   const nextLessonData = getNextLesson();
   const prevLessonData = getPreviousLesson();
+  const ShimmerCard = () => {
+    return (
+      <div className="animate-pulse flex flex-col space-y-4 p-4 rounded-md shadow bg-gray-100 dark:bg-gray-800 my-4 ">
+        <div className="h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
+      </div>
+    );
+  };
 
-  if (loading) return <div className="flex justify-center p-8">Loading course...</div>;
+  if (loading && !course) return (<div className="flex flex-col items-center justify-center min-h-screen p-8">
+      <h2 className="text-xl font-semibold mb-8 text-islamic-green dark:text-soft-blue">Loading Course...</h2>
+      {/* Render multiple ShimmerCard instances to fill the screen */}
+      <div className="max-w-20xl mx-auto w-full px-4 sm:px-6 lg:px-8"> {/* Container to limit width and center */}
+        <ShimmerCard />
+        <ShimmerCard />
+        <ShimmerCard />
+      </div>
+    </div>
+  );
   if (error) return <div className="flex justify-center p-8 text-red-500">{error}</div>;
   if (!course) return <div className="flex justify-center p-8">Course not found</div>;
 
@@ -324,14 +331,13 @@ export default function CourseLearnPage() {
         onValueChange={setOpenModuleAccordion}
         className="w-full"
       >
-        {course.modules?.map((module) => (
+        {course.modules?.map((module, m) => (
           <AccordionItem key={module.id} value={`module-${module.id}`}>
             <AccordionTrigger
               className={`p-2 rounded hover:no-underline ${currentModule?.id === module.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              //onClick={() => handleModuleClick(module)}
             >
               <div className="flex flex-col text-left">
-                <div className="font-medium">{module.title}</div>
+                <div className="font-medium">{(module?.no || (m + 1)) + ': ' + module.title}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
                   {module.lessons?.length} lessons • {module.durationHours} hours
                 </div>
@@ -342,14 +348,14 @@ export default function CourseLearnPage() {
               {openModuleAccordion === `module-${module.id}` && (
                 <div className="pl-4 py-2 space-y-1">
                   <h4 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Lessons</h4>
-                  {module.lessons?.map((lesson) => (
+                  {module.lessons?.map((lesson, i) => (
                     <div
                       key={lesson.id}
                       className={`p-2 rounded cursor-pointer flex items-center ${currentLesson?.id === lesson.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                       onClick={() => handleLessonChange(lesson, module)}
                     >
-                      <div className={`w-4 h-4 rounded-full mr-2 ${currentLesson?.id === lesson.id ? 'bg-islamic-green dark:bg-soft-blue' : 'border border-gray-400'}`} />
-                      <span>{lesson.title}</span>
+                      {/* <div className={`w-4 h-4 rounded-full mr-2 ${currentLesson?.id === lesson.id ? 'bg-islamic-green dark:bg-soft-blue' : 'border border-gray-400'}`} /> */}
+                      <span>{lesson?.no || (i + 1) + '. ' + lesson.title}</span>
                     </div>
                   ))}
                 </div>
@@ -367,7 +373,7 @@ export default function CourseLearnPage() {
       <header className="fixed top-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-b border-islamic-green/20 dark:border-soft-blue/20 p-4">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center">
-            {/* Mobile Sidebar Toggle (Sheet) */}
+            {/* Mobile Sidebar Toggle (Sheet) - visible on small screens, hidden on large */}
             <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
               <SheetTrigger asChild className="lg:hidden mr-4">
                 <Button variant="outline" size="icon">
@@ -384,27 +390,17 @@ export default function CourseLearnPage() {
               </SheetContent>
             </Sheet>
 
-            {/* Desktop Sidebar Toggle */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setIsDesktopSidebarOpen(!isDesktopSidebarOpen)}
-              className="hidden lg:flex mr-4 text-islamic-green dark:text-soft-blue border-islamic-green/20 dark:border-soft-blue/20"
-            >
-              {isDesktopSidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </Button>
-
             <Link href={`/courses/${courseId}`} className="text-islamic-green dark:text-soft-blue hover:underline">
               <ChevronLeft className="inline mr-1" /> Back to course
             </Link>
           </div>
 
           <div className="text-sm text-gray-600 dark:text-gray-400 hidden sm:block"> {/* Hidden on small screens */}
-            {course.title}
+            <b>{course.title}</b>
           </div>
 
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="text-islamic-green dark:text-soft-blue border-islamic-green/20 dark:border-soft-blue/20"
@@ -419,16 +415,22 @@ export default function CourseLearnPage() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 pt-16 pb-16"> {/* Adjusted padding-bottom to account for fixed footer */}
-        {/* Desktop Sidebar */}
-        <aside className={`fixed top-16 left-0 bottom-0 border-r border-islamic-green/20 dark:border-soft-blue/20 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray z-40 transition-all duration-300 ${isDesktopSidebarOpen ? 'w-64 lg:block' : 'w-0 hidden'}`}>
+      {/* Adjusted padding for header and footer. `min-h-[calc(100vh-theme(space.16)*2)]` ensures content takes up the available space */}
+      <div className="flex flex-1 pt-16 pb-16">
+        {/* Desktop Sidebar - hidden on small screens, block on large */}
+        <aside className="hidden lg:block fixed top-16 left-0 bottom-0 w-64 border-r border-islamic-green/20 dark:border-soft-blue/20 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray z-40">
           {sidebarContent}
         </aside>
 
         {/* Main Content */}
-        <main className={`flex-1 p-6 overflow-y-auto transition-all duration-300 ${isDesktopSidebarOpen ? 'lg:ml-64' : 'lg:ml-0'}`}>
-          {contentLoading ? (
-            <div className="flex justify-center p-8">Loading lesson content...</div>
+        {/* On large screens, add left margin for sidebar. Also ensure adequate bottom padding for fixed footer */}
+        <main className="flex-1 p-6 overflow-y-auto lg:ml-64 pb-20">
+          {contentLoading && (currentLesson && !currentLesson?.content) ? (
+            <div className="max-w-20xl mx-auto">
+                <ShimmerCard />
+                <ShimmerCard />
+                <ShimmerCard />
+            </div>
           ) : <></>}
           {currentLesson ? (
             <div className="max-w-20xl mx-auto">
@@ -446,7 +448,8 @@ export default function CourseLearnPage() {
       </div>
 
       {/* Fixed Footer for Navigation */}
-      <footer className={`fixed bottom-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-t border-islamic-green/20 dark:border-soft-blue/20 p-4 transition-all duration-300 ${isDesktopSidebarOpen ? 'lg:pl-64' : 'lg:pl-0'}`}>
+      {/* Ensure footer is fixed at the bottom and its left padding adjusts for the desktop sidebar */}
+      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-t border-islamic-green/20 dark:border-soft-blue/20 p-4 lg:pl-64">
         <div className="container mx-auto flex justify-between items-center">
           <Button
             variant="link"

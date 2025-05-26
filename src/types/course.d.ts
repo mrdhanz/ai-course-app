@@ -12,6 +12,7 @@ export interface SkillGained {
 
 export interface Module {
   id?: string;
+  no?: number | null;
   title: string;
   description: string;
   durationHours: number;
@@ -21,6 +22,7 @@ export interface Module {
 
 export interface Lesson {
   id?: string;
+  no?: number | null;
   title: string;
   content: string | null;
   moduleId?: string;

@@ -9,8 +9,7 @@ import {
     FormControl,
     FormField,
     FormItem,
-    FormLabel,
-    FormMessage,
+    FormMessage, // We'll minimize FormLabel for a cleaner look
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,13 +19,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ui/textarea"; // Still useful for optional detailed input
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react"; // Added useRef and useEffect for focus
 import { CourseSuggestion, CourseSuggestionsResponse } from "@/types/course-suggestion";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react"; // Added Search icon
 import { languageMap } from "@/types/language";
 import { useRouter, useSearchParams } from "next/navigation";
+import { cn } from "@/lib/utils"; // Assuming you have a utility for class names
 
 export function CourseSuggestionForm() {
     const params = useSearchParams();
@@ -48,17 +48,33 @@ export function CourseSuggestionForm() {
         },
     });
 
+    // Focus on the search input when the component mounts
+    useEffect(() => {
+        if(form)
+            form.setFocus('subject');
+    }, []);
+
     async function onSubmit(data: CourseSuggestionInput) {
         try {
             setIsSubmitting(true);
             setError(null);
+            setSuggestions([]); // Clear previous suggestions
+
+            // Only subject is mandatory for the "search" part
+            const payload = {
+                subject: data.subject,
+                audience: data.audience || undefined, // Send only if present
+                goals: data.goals || undefined,
+                verifiedBy: data.verifiedBy || undefined,
+                language: data.language,
+            };
 
             const response = await fetch('/api/ai/course/suggestions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(data),
+                body: JSON.stringify(payload),
             });
 
             if (!response.ok) {
@@ -67,6 +83,7 @@ export function CourseSuggestionForm() {
 
             const result: CourseSuggestionsResponse = await response.json();
             setSuggestions(result.suggestions);
+            setSelectedCourseId(null); // Reset selected course
         } catch (err) {
             console.error(err);
             setError("Failed to get course suggestions. Please try again.");
@@ -98,9 +115,9 @@ export function CourseSuggestionForm() {
                 body: JSON.stringify({
                     courseTitle: selectedCourse.title,
                     verifiedBy: selectedCourse.verifiedBy,
-                    totalDuration: selectedCourse.durationWeeks * 24,
+                    totalDuration: selectedCourse.durationWeeks * 24, // Assuming 24 hours/week for duration
                     level: selectedCourse.difficulty,
-                    lang: form.getValues('language'),
+                    lang: form.getValues('language'), // Use the selected language from the form
                     keyTopics: selectedCourse.keyTopics,
                     targetAudience: selectedCourse.targetAudience,
                     prerequisites: selectedCourse.prerequisites,
@@ -135,143 +152,159 @@ export function CourseSuggestionForm() {
         }
     }
 
+    // Function to handle Enter key press for immediate search
+    const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && !isSubmitting) {
+            form.handleSubmit(onSubmit)();
+        }
+    };
+
     return (
-        <div className="max-w-2xl mx-auto p-6 bg-parchment dark:bg-dark-gray rounded-lg"> 
-            <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                    <FormField
-                        control={form.control}
-                        name="subject"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-islamic-green dark:text-soft-blue">
-                                    Subject
-                                </FormLabel>
-                                <FormControl>
-                                    <Input
-                                        placeholder="e.g., Artificial Intelligence"
-                                        {...field}
-                                        className="bg-white dark:bg-gray-800"
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+        <div className="flex flex-col items-center justify-center min-h-screen bg-parchment dark:bg-dark-gray p-4 sm:p-6">
+            <div className="w-full max-w-3xl mb-8 text-center">
+                <h1 className="text-4xl sm:text-5xl font-bold text-islamic-green dark:text-soft-blue mb-6">
+                    Course Search Engine
+                </h1>
+                <p className="text-lg text-gray-700 dark:text-gray-300">
+                    Discover and create your ideal course with AI-powered suggestions.
+                </p>
+            </div>
 
-                    <FormField
-                        control={form.control}
-                        name="audience"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-islamic-green dark:text-soft-blue">
-                                    Target Audience
-                                </FormLabel>
-                                <FormControl>
-                                    <Input
-                                        placeholder="e.g., college students"
-                                        {...field}
-                                        className="bg-white dark:bg-gray-800"
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+            <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 sm:p-8">
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                        {/* Main Search Input */}
+                        <FormField
+                            control={form.control}
+                            name="subject"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <div className="relative flex items-center">
+                                        <Search className="absolute left-3 h-5 w-5 text-gray-400 dark:text-gray-600" />
+                                        <FormControl>
+                                            <Input
+                                                placeholder="Search for a course subject, e.g., 'Artificial Intelligence for Beginners'"
+                                                {...field}
+                                                className="w-full pl-10 pr-4 py-3 rounded-full border border-gray-300 focus-visible:ring-2 focus-visible:ring-islamic-green focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus-visible:ring-soft-blue transition-all"
+                                                onKeyPress={handleKeyPress}
+                                            />
+                                        </FormControl>
+                                    </div>
+                                    <FormMessage className="text-right mt-1" />
+                                </FormItem>
+                            )}
+                        />
 
-                    <FormField
-                        control={form.control}
-                        name="goals"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-islamic-green dark:text-soft-blue">
-                                    Learning Goals (Optional)
-                                </FormLabel>
-                                <FormControl>
-                                    <Textarea
-                                        placeholder="What should students achieve from this course?"
-                                        {...field}
-                                        className="bg-white dark:bg-gray-800"
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                        {/* Optional Advanced Search / Filters - Collapsible or always visible */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField
+                                control={form.control}
+                                name="audience"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <Input
+                                                placeholder="Target Audience (e.g., college students)"
+                                                {...field}
+                                                className="bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 text-sm"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
 
-                    <FormField
-                        control={form.control}
-                        name="verifiedBy"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-islamic-green dark:text-soft-blue">
-                                    Verified By (Optional)
-                                </FormLabel>
-                                <FormControl>
-                                    <Textarea
-                                        placeholder="e.g: Coursera, Google Developers"
-                                        {...field}
-                                        className="bg-white dark:bg-gray-800"
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                            <FormField
+                                control={form.control}
+                                name="language"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger className="bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 text-sm">
+                                                    <SelectValue placeholder="Language" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                {Object.keys(languageMap).map(key => (
+                                                    <SelectItem key={key} value={key}>{languageMap[key]}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
 
-                    <FormField
-                        control={form.control}
-                        name="language"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-islamic-green dark:text-soft-blue">
-                                    Language
-                                </FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger className="bg-white dark:bg-gray-800">
-                                            <SelectValue placeholder="Select language" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {Object.keys(languageMap).map(key => (
-                                            <SelectItem key={key} value={key}>{languageMap[key]}</SelectItem>)
-                                        )}
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                            <FormField
+                                control={form.control}
+                                name="goals"
+                                render={({ field }) => (
+                                    <FormItem className="md:col-span-2">
+                                        <FormControl>
+                                            <Textarea
+                                                placeholder="Specific learning goals (Optional)"
+                                                {...field}
+                                                rows={2}
+                                                className="bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 text-sm resize-none"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
 
-                    <Button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="w-full bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90"
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Generating...
-                            </>
-                        ) : (
-                            "Get Course Suggestions"
-                        )}
-                    </Button>
-                </form>
-            </Form>
+                            <FormField
+                                control={form.control}
+                                name="verifiedBy"
+                                render={({ field }) => (
+                                    <FormItem className="md:col-span-2">
+                                        <FormControl>
+                                            <Input
+                                                placeholder="Verified by (e.g., Coursera, Google Developers - Optional)"
+                                                {...field}
+                                                className="bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded-md py-2 px-3 text-sm"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+
+                        <Button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="w-full py-3 px-6 rounded-full bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90 text-lg font-semibold transition-all flex items-center justify-center gap-2"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                    Searching...
+                                </>
+                            ) : (
+                                <>
+                                    <Search className="h-5 w-5" />
+                                    Search for Courses
+                                </>
+                            )}
+                        </Button>
+                    </form>
+                </Form>
+            </div>
 
             {error && (
-                <div className="mt-6 p-4 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-md">
+                <div className="mt-8 w-full max-w-3xl p-4 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-md shadow-sm">
                     {error}
                 </div>
             )}
 
+            {/* --- */}
             {suggestions.length > 0 && (
-                <div className="mt-8 space-y-6">
-                    <h3 className="text-xl font-semibold text-islamic-green dark:text-soft-blue">
-                        Suggested Courses
-                    </h3>
+                <div className="mt-8 w-full max-w-3xl space-y-6">
+                    <h2 className="text-2xl font-bold text-islamic-green dark:text-soft-blue text-center mb-6">
+                        Course Suggestions
+                    </h2>
                     <RadioGroup
                         value={selectedCourseId || ""}
                         onValueChange={setSelectedCourseId}
@@ -280,75 +313,71 @@ export function CourseSuggestionForm() {
                         {suggestions.map((course, id) => (
                             <div
                                 key={id}
-                                className="p-4 border border-islamic-green/20 dark:border-soft-blue/20 rounded-lg bg-white/50 dark:bg-gray-800/50"
+                                className={cn(
+                                    "p-5 border rounded-lg shadow-sm cursor-pointer transition-all",
+                                    "bg-white dark:bg-gray-800",
+                                    "border-gray-200 dark:border-gray-700",
+                                    selectedCourseId === id.toString()
+                                        ? "border-islamic-green ring-2 ring-islamic-green dark:border-soft-blue dark:ring-soft-blue"
+                                        : "hover:border-gray-400 dark:hover:border-gray-600"
+                                )}
                             >
                                 <div className="flex items-start gap-4">
                                     <div className="flex items-center h-5 mt-1">
-                                        <RadioGroupItem value={id.toString()} id={`course-${id}`} />
+                                        <RadioGroupItem value={id.toString()} id={`course-${id}`} className="w-5 h-5" />
                                     </div>
                                     <div className="flex-1">
                                         <label
                                             htmlFor={`course-${id}`}
-                                            className="block text-lg font-medium text-islamic-green dark:text-soft-blue cursor-pointer"
+                                            className="block text-xl font-semibold text-islamic-green dark:text-soft-blue cursor-pointer mb-2"
                                         >
                                             {course.title}
                                         </label>
 
-                                        <p className="mt-1 text-gray-700 dark:text-gray-300">
+                                        <p className="text-gray-700 dark:text-gray-300 mb-4">
                                             {course.description}
                                         </p>
 
-                                        <div className="mt-3 grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-800 dark:text-gray-200">
                                             <div>
-                                                <p className="text-sm font-medium text-islamic-green dark:text-soft-blue">
-                                                    Target Audience
-                                                </p>
+                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Target Audience:</p>
                                                 <p>{course.targetAudience}</p>
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-islamic-green dark:text-soft-blue">
-                                                    Duration
-                                                </p>
+                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Duration:</p>
                                                 <p>{course.durationWeeks} weeks</p>
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-islamic-green dark:text-soft-blue">
-                                                    Difficulty
-                                                </p>
+                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Difficulty:</p>
                                                 <p className="capitalize">{course.difficulty}</p>
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Verified By:</p>
+                                                <p className="capitalize">{course.verifiedBy || "N/A"}</p>
                                             </div>
                                         </div>
 
                                         <div className="mt-4">
-                                            <p className="text-sm font-medium text-islamic-green dark:text-soft-blue">
-                                                Key Topics
-                                            </p>
-                                            <ul className="list-disc list-inside mt-1">
-                                                {course.keyTopics.slice(0, 3).map((topic, i) => (
+                                            <p className="font-medium text-islamic-green dark:text-soft-blue">Key Topics:</p>
+                                            <ul className="list-disc list-inside mt-1 text-gray-700 dark:text-gray-300">
+                                                {course.keyTopics.slice(0, 5).map((topic, i) => (
                                                     <li key={i}>{topic}</li>
                                                 ))}
+                                                {course.keyTopics.length > 5 && (
+                                                    <li className="text-gray-500 dark:text-gray-400">...and more</li>
+                                                )}
                                             </ul>
                                         </div>
                                         {course.prerequisites.length > 0 && (
                                             <div className="mt-4">
-                                                <p className="text-sm font-medium text-islamic-green dark:text-soft-blue">
-                                                    Prerequisites
-                                                </p>
-                                                <ul className="list-disc list-inside mt-1">
+                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Prerequisites:</p>
+                                                <ul className="list-disc list-inside mt-1 text-gray-700 dark:text-gray-300">
                                                     {course.prerequisites.map((req, i) => (
                                                         <li key={i}>{req}</li>
                                                     ))}
                                                 </ul>
                                             </div>
                                         )}
-                                        <div className="mt-4">
-                                            <div>
-                                                <p className="text-sm font-medium text-islamic-green dark:text-soft-blue">
-                                                    Verified By
-                                                </p>
-                                                <p className="capitalize">{course.verifiedBy}</p>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -357,12 +386,12 @@ export function CourseSuggestionForm() {
                     <Button
                         onClick={handleGenerateFullCourse}
                         disabled={isGeneratingFullCourse || !selectedCourseId}
-                        className="w-full bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90"
+                        className="w-full py-3 px-6 rounded-full bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90 text-lg font-semibold transition-all flex items-center justify-center gap-2 mt-6"
                     >
                         {isGeneratingFullCourse ? (
                             <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Generating...
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                Generating Full Course...
                             </>
                         ) : (
                             "Generate Full Course Details"

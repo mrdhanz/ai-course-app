@@ -17,6 +17,17 @@ interface MermaidProps {
 export const fixCommonErrors = (chart: string): string => {
     let fixed = chart
 
+    if (new RegExp(/classDiagram/g).test(chart)) {
+        // Step 1: Replace 'interface' keyword with 'class'
+        fixed = fixed.replaceAll(/interface\s+([A-Za-z0-9_]+)\s*\{([\s\S]*?)\}/g, (match, className, content) => {
+            if (className.startsWith('I') && /[A-Z]/.test(className[1])) { // Simple heuristic: starts with 'I' and next is uppercase
+                return `class ${className} {\n        ${content.includes('<<interface>>') ? '' : '<<interface>>'}${content}\n    }`;
+            } else {
+                return match; // Return the original match if not an interface (to avoid adding stereotype to all classes)
+            }
+        });
+    }
+
     // 1. Fix state diagram cycles by ensuring no state is its own parent
     if (chart.includes('stateDiagram')) {
         fixed = fixed.replace(/state (\w+)\s*{\s*\1/g, (_, stateName) => {
@@ -64,6 +75,119 @@ export const fixCommonErrors = (chart: string): string => {
     )
     fixed = fixed.replace(/\|\s*""\s*\|/g, '||') // Fix empty quote relationship syntax
 
+    // Fix diamond node syntax (new)
+    fixed = fixed.replace(
+        /(\w+)\{([^}]*)\}(?!")/g,
+        (_, nodeId, content) => {
+            return `${nodeId}{"${content.trim().replace(/"/g, '\\"')}"}`
+        }
+    )
+    // 15. Fix malformed node declarations with parentheses (new)
+    fixed = fixed.replace(
+        /(\w+)\(("[^"]*"|\([^)]*\))\)+/g,
+        (match, id, label) => {
+            // Remove extra trailing parentheses
+            const cleanLabel = label.replace(/\)+$/, '');
+            return `${id}(${cleanLabel})`;
+        }
+    );
+
+    fixed = fixed.replace(
+        /(\w+)\s*---\s*([^-]+)\s*-->/g,
+        (_, from, label) => `${from} --- ${label.trim().replace(" ", '')} -->`
+    );
+
+    if (new RegExp(/subgraph/g).test(chart)) {
+        fixed = fixed.replace(
+            /subgraph\s+([^\s"]+)\s+"([^"]+)"/g,
+            'subgraph "$1 $2"'
+        ).replace(/(subgraph\s+)(.*?)(?=(\s*[\n{]|$))/gm, (match, prefix, subgraphName) => {
+            // Trim whitespace from the captured name for accurate checking
+            const trimmedName = subgraphName.trim();
+
+            if (trimmedName.includes('["') || trimmedName.includes('{"')) {
+                return match;
+            }
+            // Check if the name is already quoted
+            const isAlreadyQuoted = trimmedName.startsWith('"') && trimmedName.endsWith('"');
+
+            // Check if the name contains characters that require quoting (spaces, or any non-alphanumeric, non-underscore character)
+            // A more robust check for "special characters" in Mermaid names might be anything that isn't a letter, number, or underscore, or a simple dash.
+            const needsQuoting = !/^[a-zA-Z0-9_]+$/.test(trimmedName); // True if contains anything other than basic alphanumeric/underscore
+
+            if (!isAlreadyQuoted && needsQuoting) {
+                // If it's not already quoted but needs quoting, add quotes
+                return `${prefix}"${trimmedName}"`;
+            }
+            // Otherwise, return the original match (no change needed)
+            return match;
+        });
+    }
+
+    if (chart.includes('erDiagram')) {
+        // Fix 1: Remove backslash-escaped quotes and potentially the preceding curly brace from relationship labels.
+        // This regex looks for '||--o{"<Entity> : \"<relationship_label>\"' or '||--o{<Entity> : \"<relationship_label>\"'
+        // It captures the entity name and the relationship label, then reconstructs it correctly.
+        fixed = fixed.replace(/\|\|--o\{"?([a-zA-Z0-9_ ]+)\s*:\s*\\"([a-zA-Z0-9_ ]+)\\"/g, '||--o{$1 : $2');
+        // Fix 2: Remove any remaining backslash-escaped quotes around relationship labels (e.g., : \"contains\")
+        fixed = fixed.replace(/:\s*\\"([a-zA-Z0-9_ ]+)\\"/g, ': $1');
+        // Fix 3: Correct stray double quotes at the end of attribute definitions within entity blocks
+        // This targets patterns like 'int Level"}' and fixes them to 'int Level\n}'
+        fixed = fixed.replace(/([a-zA-Z0-9_ ]+)"\s*}/g, '$1\n}');
+
+        // Fix 4: Remove C-style single-line comments (//)
+        fixed = fixed.replace(/\s*\/\/.*$/gm, '');
+    }
+
+    fixed = fixed.replace(/([A-Z0-9]+)(\[|\{)(.*?)(\]|\})/g, (_, nodeId, openingBracket, labelContent, closingBracket) => {
+        let cleanedLabel = labelContent;
+
+        // Remove any existing backslashes before quotes
+        cleanedLabel = cleanedLabel.replace(/\\"/g, '"');
+        cleanedLabel = cleanedLabel.replace(/\\'/g, "'");
+
+        // Remove any immediately adjacent quotes at the very start/end of the label content
+        // (e.g., if it was '["Text"]' and the inner "" are part of content)
+        if (cleanedLabel.startsWith('"') && cleanedLabel.endsWith('"')) {
+            cleanedLabel = cleanedLabel.substring(1, cleanedLabel.length - 1);
+        }
+        if (cleanedLabel.startsWith("'") && cleanedLabel.endsWith("'")) {
+            cleanedLabel = cleanedLabel.substring(1, cleanedLabel.length - 1);
+        }
+
+        // Now, replace any remaining double quotes within the label with single quotes
+        // This is the Mermaid standard for inner quotes.
+        cleanedLabel = cleanedLabel.replace(/"/g, "'");
+
+        // Reconstruct the node with consistent outer brackets/quotes
+        // We ensure that the outer container uses the correct type based on the original structure.
+        let finalNode;
+        if (openingBracket === '[' && closingBracket === ']') {
+            finalNode = `${nodeId}["${cleanedLabel}"]`;
+        } else if (openingBracket === '{' && closingBracket === '}') {
+            finalNode = `${nodeId}{"${cleanedLabel}"}`; // Use double quotes for consistency inside braces too, then fix inner
+        } else {
+            // Fallback for truly malformed, try to enclose in []
+            finalNode = `${nodeId}["${cleanedLabel}"]`;
+        }
+
+        // Mermaid can sometimes handle mixed outer quotes depending on the shape,
+        // but for consistency and to avoid the original mismatch, we enforce this.
+        return finalNode;
+    });
+    fixed = fixed.replaceAll('&gt;', '>')
+    fixed = fixed.replace(
+        /^(\s*[A-Z0-9]+\s*(?:--?>>?|--?x|--?o|x--?|o--?)\s*[A-Z0-9]+:\s*)([\s\S]*?)$/gm,
+        (match, arrowAndLabelPrefix, descriptionContent) => {
+            // Remove any internal newlines or excessive whitespace from the description content
+            // We want to preserve single spaces between words but remove multi-spaces and newlines.
+            const cleanedDescription = descriptionContent
+                                        .replace(/\s+/g, ' ') // Replace multiple spaces/newlines with a single space
+                                        .trim().replace(';', ':'); // Trim leading/trailing whitespace
+
+            return `${arrowAndLabelPrefix}${cleanedDescription}`;
+        }
+    );
     return fixed
 }
 
@@ -100,7 +224,7 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
                 })
 
                 await mermaid.parse(fixedChart)
-                const { svg, } = await mermaid.render('mermaid-graph', fixedChart)
+                const { svg } = await mermaid.render('mermaid-graph', fixedChart)
                 mermaidRef.current!.innerHTML = svg
                 setParseError(false)
             } catch (error) {
@@ -172,13 +296,13 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
 
                 <div className="flex items-center space-x-2">
                     {view === 'code' ? <button
-                        onClick={()=> window.open('https://www.mermaidchart.com/play?utm_source='+window.location.origin)}
+                        onClick={() => window.open('https://www.mermaidchart.com/play?utm_source=' + window.location.origin)}
                         className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                         title="Playground"
                     >
                         <Play className="h-4 w-4" />
                     </button> : <></>}
-                    
+
                     <button
                         onClick={zoomOut}
                         className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
