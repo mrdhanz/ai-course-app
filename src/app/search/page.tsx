@@ -1,7 +1,7 @@
 // app/search/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CourseSuggestion, CourseSuggestionsResponse } from "@/types/course-suggestion";
 import { Loader2, Search as SearchIcon } from 'lucide-react';
@@ -15,9 +15,9 @@ import dynamic from "next/dynamic";
 const SunIcon = dynamic(() => import('@/components/SunIcon'), { ssr: false })
 const MoonIcon = dynamic(() => import('@/components/MoonIcon'), { ssr: false })
 
-export default function SearchResultsPage() {
-    const { theme, setTheme } = useTheme();
+function SearchResultsPage() {
     const params = useSearchParams();
+    const { theme, setTheme } = useTheme();
     const router = useRouter();
     const [suggestions, setSuggestions] = useState<CourseSuggestion[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -115,7 +115,7 @@ export default function SearchResultsPage() {
             generateCourseControllerRef.current.abort();
             console.log('Previous full course generation request cancelled.');
         }
-        
+
         const controller = new AbortController();
         const signal = controller.signal;
         generateCourseControllerRef.current = controller; // Store the new controller
@@ -188,10 +188,10 @@ export default function SearchResultsPage() {
             // Only set loading to false if this specific request wasn't aborted
             // And clear the ref only if it's still pointing to the current controller
             if (!signal.aborted) {
-                 setIsGeneratingFullCourse(false);
-                 if (generateCourseControllerRef.current === controller) {
+                setIsGeneratingFullCourse(false);
+                if (generateCourseControllerRef.current === controller) {
                     generateCourseControllerRef.current = null;
-                 }
+                }
             }
         }
     }
@@ -381,5 +381,43 @@ export default function SearchResultsPage() {
                 )}
             </main>
         </div>
+    );
+}
+
+function SearchPageLoadingFallback() {
+    return (
+        <div className="min-h-screen bg-parchment dark:bg-dark-gray flex flex-col items-center justify-center p-8">
+            <h1 className="text-4xl font-extrabold text-islamic-green dark:text-soft-blue mb-8 text-center">
+                Search
+            </h1>
+            <div className="flex flex-col items-center py-10">
+                <div className="relative flex-grow max-w-xl mx-auto w-full mb-8">
+                    {/* Placeholder for the search input */}
+                    <div className="w-full h-12 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
+                </div>
+                <Loader2 className="h-10 w-10 animate-spin text-islamic-green dark:text-soft-blue" />
+                <p className="mt-4 text-xl text-gray-700 dark:text-gray-300">Loading search results...</p>
+                {/* You can add a skeleton loader for the results area */}
+                <div className="w-full max-w-3xl mt-8 space-y-6">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="p-6 border rounded-lg shadow-sm bg-gray-100 dark:bg-gray-800 h-48 animate-pulse">
+                            <div className="h-4 w-1/4 bg-gray-300 dark:bg-gray-600 mb-2"></div>
+                            <div className="h-8 w-3/4 bg-gray-300 dark:bg-gray-600 mb-4"></div>
+                            <div className="h-4 w-full bg-gray-300 dark:bg-gray-600 mb-2"></div>
+                            <div className="h-4 w-5/6 bg-gray-300 dark:bg-gray-600 mb-2"></div>
+                            <div className="h-4 w-2/3 bg-gray-300 dark:bg-gray-600"></div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function SearchPage() {
+    return (
+        <Suspense fallback={<SearchPageLoadingFallback />}>
+            <SearchResultsPage />
+        </Suspense>
     );
 }
