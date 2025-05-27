@@ -1,15 +1,17 @@
 // app/courses/[courseId]/learn/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react' // Added useRef
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Menu } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Menu, BookOpen, Clock, Lightbulb, CheckCircle2 } from 'lucide-react' // Added more icons
 import Link from 'next/link'
 import { Course, Lesson, Module } from '@/types/course'
 import { useTheme } from 'next-themes'
 import dynamic from "next/dynamic";
 import { MarkdownRenderer } from '@/components/MarkdownRenderer'
+import { Progress } from '@/components/ui/progress' // Assuming you have a Progress component (from Shadcn UI or similar)
+import { Separator } from '@/components/ui/separator' // Assuming you have a Separator component
 
 // Import Shadcn UI Accordion components
 import {
@@ -26,6 +28,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetClose // For closing the sheet programmatically
 } from "@/components/ui/sheet"
 
 const SunIcon = dynamic(() => import('@/components/SunIcon'), { ssr: false })
@@ -64,13 +67,24 @@ export default function CourseLearnPage() {
   // State for mobile sidebar visibility (controlled by Sheet)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Effect to fetch course data and initialize module/lesson based on URL params
+  // Ref to store AbortController for content generation
+  const contentControllerRef = useRef<AbortController | null>(null);
+
+  // Calculate overall course progress (simple example)
+  const [progress, setProgress] = useState(0);
+
   useEffect(() => {
+    // Abort previous course fetch if navigating quickly
+    const courseFetchController = new AbortController();
+    const courseFetchSignal = courseFetchController.signal;
+
     const fetchCourse = async () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/courses/${courseId}`);
+        const res = await fetch(`/api/courses/${courseId}`, { signal: courseFetchSignal });
+        if (courseFetchSignal.aborted) return;
+
         if (!res.ok) throw new Error('Failed to fetch course');
         const data = await res.json();
         setCourse(data);
@@ -107,18 +121,38 @@ export default function CourseLearnPage() {
         }
 
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+            console.log('Course fetch aborted.');
+            return;
+        }
         setError(err instanceof Error ? err.message : 'Failed to fetch course');
       } finally {
-        setLoading(false);
+        if (!courseFetchSignal.aborted) {
+            setLoading(false);
+        }
       }
     };
-
+    
     fetchCourse();
-  }, [courseId, params]); // Re-run effect when courseId or URL params change
+
+    return () => {
+        courseFetchController.abort(); // Cleanup on unmount or re-run
+    };
+  }, [courseId, params]);
 
   // Effect to fetch lesson content
   useEffect(() => {
     if (!course || !currentModule || !currentLesson) return;
+
+    // Abort any previous content generation request
+    if (contentControllerRef.current) {
+        contentControllerRef.current.abort();
+        console.log('Previous content generation request aborted.');
+    }
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+    contentControllerRef.current = controller; // Store the new controller
 
     const fetchLessonContent = async () => {
       try {
@@ -131,33 +165,39 @@ export default function CourseLearnPage() {
         if (lessonIndex === -1) return;
 
         // Try to fetch existing content from the server first
-        if (currentModule?.id && currentLesson?.id) {
-          try {
+        try {
             const res = await fetch(`/api/courses/${course.id}/${currentModule.id}/${currentLesson.id}`, {
-              headers: {
-                'Content-Type': 'application/json',
-              }
+              headers: { 'Content-Type': 'application/json' },
+              signal // Pass signal to existing content fetch
             });
+            if (signal.aborted) return; // Check if aborted after fetch
+
             if (res.ok) {
-              const lesson = await res.json() as Lesson;
-              if (lesson.content) {
-                setCurrentLesson(lesson);
-                return; // Use existing content if available
-              }
+                const lesson = await res.json() as Lesson;
+                if (lesson.content) {
+                    setCurrentLesson(lesson);
+                    setContentLoading(false);
+                    console.log('Using existing lesson content.');
+                    return; // Use existing content if available
+                }
             }
-          } catch (er) {
+        } catch (er) {
+            if (er instanceof Error && er.name === 'AbortError') {
+                console.log('Existing content fetch aborted.');
+                return;
+            }
             console.error("Failed to fetch existing lesson content:", er);
-          }
         }
 
         // If no existing content, generate it
+        const prevLessonData = getPreviousLesson(); // Need this for the body
         const body: GenerateContentRequest = {
           courseTitle: course.title,
           verifiedBy: course.verifiedBy,
           moduleNo: currentModule?.no || moduleIndex + 1,
           moduleTitle: currentModule.title,
           moduleDesc: currentModule.description,
-          previousLessonNo: prevLessonData?.lesson?.no || prevLessonData?.lesson?.title ? lessonIndex : undefined,
+          previousLessonNo: prevLessonData?.lesson?.no || (prevLessonData?.lesson ? lessonIndex : undefined),
           previousLessonTitle: prevLessonData?.lesson?.title,
           lessonNo: currentLesson?.no || lessonIndex + 1,
           lessonTitle: currentLesson.title,
@@ -171,8 +211,9 @@ export default function CourseLearnPage() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
         });
+
         if (!res.ok) {
           const errorData = await res.json();
           throw new Error(errorData.error || 'Failed to generate content');
@@ -188,7 +229,7 @@ export default function CourseLearnPage() {
         let done = false;
         let accumulatedContent = '';
 
-        while (!done) {
+        while (!done) { // Also check signal.aborted in the loop
           const { value, done: readerDone } = await reader.read();
           done = readerDone;
           const chunk = decoder.decode(value, { stream: true }); // Decode incrementally
@@ -201,7 +242,7 @@ export default function CourseLearnPage() {
           }));
         }
 
-        // Save generated content to DB
+        // Only save if content generation completed and was not aborted
         if (done && currentModule?.id && currentLesson && accumulatedContent) {
           fetch(`/api/courses/${course.id}/${currentModule?.id}/${currentLesson?.id}`, {
             method: 'PUT',
@@ -212,25 +253,67 @@ export default function CourseLearnPage() {
               title: body.lessonTitle,
               content: accumulatedContent
             })
-          });
+          }).catch(saveErr => console.error("Failed to save generated content:", saveErr));
         }
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+            console.log('Content generation request was aborted.');
+            return; // Ignore AbortError
+        }
         setError(err instanceof Error ? err.message : 'Failed to load lesson content');
       } finally {
-        setContentLoading(false);
+        if (!signal.aborted) { // Only set loading to false if this specific request wasn't aborted
+            setContentLoading(false);
+            if (contentControllerRef.current === controller) {
+                contentControllerRef.current = null; // Clear the ref
+            }
+        }
       }
     };
 
-    // Only fetch if content doesn't exist for the current lesson
+    // Only fetch if content doesn't exist for the current lesson or if content is loading
+    // to ensure it re-fetches if generation failed before.
     if (!currentLesson.content) {
       fetchLessonContent();
     }
+  }, [course, currentModule, currentLesson]); // Dependencies for content fetch
+
+  // Calculate progress whenever currentLesson changes
+  useEffect(() => {
+    if (course && currentModule && currentLesson) {
+      let completedLessons = 0;
+      let totalLessons = 0;
+
+      course.modules.forEach(module => {
+        totalLessons += module.lessons.length;
+        // This is a simplification. A real app would track actual completion
+        // For now, we'll mark lessons up to the current one as "completed"
+        if (module.id === currentModule.id) {
+          for (const lesson of module.lessons) {
+            completedLessons++;
+            if (lesson.id === currentLesson.id) break; // Stop counting at current lesson
+          }
+        } else {
+          // If a module comes before the current module, assume all its lessons are done
+          const currentModuleIndex = course.modules.findIndex(m => m.id === currentModule.id);
+          const moduleIndex = course.modules.findIndex(m => m.id === module.id);
+          if (moduleIndex < currentModuleIndex) {
+            completedLessons += module.lessons.length;
+          }
+        }
+      });
+      setProgress(totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0);
+    }
   }, [course, currentModule, currentLesson]);
 
+
   const handleLessonChange = (lesson: Lesson, module: Module) => {
-    setCurrentLesson(lesson);
-    setCurrentModule(module); // Ensure currentModule is set when a lesson is directly clicked
-    router.push(`/courses/${courseId}/learn?module=${module.id}&lesson=${lesson.id}`);
+    // Only update if it's a new lesson
+    if (currentLesson?.id !== lesson.id || currentModule?.id !== module.id) {
+        setCurrentLesson(lesson);
+        setCurrentModule(module); // Ensure currentModule is set when a lesson is directly clicked
+        router.push(`/courses/${courseId}/learn?module=${module.id}&lesson=${lesson.id}`);
+    }
     setIsMobileSidebarOpen(false); // Close mobile sidebar after selection
   };
 
@@ -297,33 +380,90 @@ export default function CourseLearnPage() {
 
   const nextLessonData = getNextLesson();
   const prevLessonData = getPreviousLesson();
+
+  // Shimmer effect for loading content
   const ShimmerCard = () => {
     return (
-      <div className="animate-pulse flex flex-col space-y-4 p-4 rounded-md shadow bg-gray-100 dark:bg-gray-800 my-4 ">
-        <div className="h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
+      <div className="animate-pulse flex flex-col space-y-4 p-6 rounded-lg shadow bg-gray-50 dark:bg-gray-800 my-6 border border-gray-200 dark:border-gray-700">
+        <div className="h-8 bg-gray-300 dark:bg-gray-700 rounded w-full"></div>
+        <div className="h-6 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
+        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
+        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded"></div>
+        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-2/3"></div>
       </div>
     );
   };
 
-  if (loading && !course) return (<div className="flex flex-col items-center justify-center min-h-screen p-8">
-      <h2 className="text-xl font-semibold mb-8 text-islamic-green dark:text-soft-blue">Loading Course...</h2>
-      {/* Render multiple ShimmerCard instances to fill the screen */}
-      <div className="max-w-20xl mx-auto w-full px-4 sm:px-6 lg:px-8"> {/* Container to limit width and center */}
-        <ShimmerCard />
-        <ShimmerCard />
-        <ShimmerCard />
+  // Loading/Error/Not Found States (More robust)
+  if (loading && !course) {
+    return (
+      <div className="min-h-screen bg-parchment dark:bg-dark-gray flex flex-col items-center justify-center p-8">
+        <div className="text-center">
+            <h2 className="text-2xl font-bold text-islamic-green dark:text-soft-blue mb-4">Loading Course</h2>
+            <p className="text-gray-700 dark:text-gray-300 mb-6">Please wait while we fetch the course details...</p>
+        </div>
+        <div className="max-w-xl w-full px-4 sm:px-6 lg:px-8">
+            <ShimmerCard />
+            <ShimmerCard />
+            <ShimmerCard />
+        </div>
       </div>
-    </div>
-  );
-  if (error) return <div className="flex justify-center p-8 text-red-500">{error}</div>;
-  if (!course) return <div className="flex justify-center p-8">Course not found</div>;
+    );
+  }
 
+  if (error && !course) { // Only show full error page if course itself failed to load
+    return (
+      <div className="min-h-screen bg-parchment dark:bg-dark-gray flex items-center justify-center">
+        <div className="text-center p-8 max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-red-200 dark:border-red-700">
+          <h2 className="text-3xl font-extrabold text-red-600 dark:text-red-400 mb-4">Error Loading Course</h2>
+          <p className="text-gray-700 dark:text-gray-300 mb-6 text-lg">{error}</p>
+          <Button
+            onClick={() => window.location.reload()}
+            className="bg-red-500 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-800 text-white font-semibold py-2 px-6 rounded-md transition-colors duration-200"
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!course) { // Course not found after loading
+    return (
+      <div className="min-h-screen bg-parchment dark:bg-dark-gray flex items-center justify-center">
+        <div className="text-center p-8 max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-yellow-200 dark:border-yellow-700">
+          <h2 className="text-3xl font-extrabold text-yellow-600 dark:text-yellow-400 mb-4">Course Not Found</h2>
+          <p className="text-gray-700 dark:text-gray-300 mb-6 text-lg">The course you are looking for does not exist or has been removed.</p>
+          <Button
+            onClick={() => router.push('/courses')}
+            className="bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90 text-white font-semibold py-2 px-6 rounded-md transition-colors duration-200"
+          >
+            Browse Courses
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Content for the Sidebar (reused for desktop and mobile sheet)
   const sidebarContent = (
     <>
-      <h3 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Course Modules</h3>
+      <div className="p-2 mb-4">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-4" title={course.title}>{course.title}</h2>
+        <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+            <Clock className="h-4 w-4 mr-1" />
+            {Math.ceil(course.totalDuration / 24)} weeks
+        </div>
+        <div className="w-full mt-3">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Your Progress:</p>
+            <Progress value={progress} className="w-full h-2 rounded-full [&>div]:bg-islamic-green [&>div]:dark:bg-soft-blue"/>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">{Math.round(progress)}% Complete</p>
+        </div>
+        <Separator className="my-4 bg-gray-200 dark:bg-gray-700" />
+      </div>
+
+      <h3 className="font-semibold text-islamic-green dark:text-soft-blue mb-3 px-2">Course Modules</h3>
       <Accordion
         type="single"
         collapsible
@@ -332,34 +472,36 @@ export default function CourseLearnPage() {
         className="w-full"
       >
         {course.modules?.map((module, m) => (
-          <AccordionItem key={module.id} value={`module-${module.id}`}>
+          <AccordionItem
+            key={module.id}
+            value={`module-${module.id}`}
+            className="border-b border-gray-200 dark:border-gray-700 last:border-b-0"
+          >
             <AccordionTrigger
-              className={`p-2 rounded hover:no-underline ${currentModule?.id === module.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              className={`p-2 rounded-lg hover:no-underline text-base font-medium transition-colors duration-200
+                ${currentModule?.id === module.id ? 'bg-islamic-green/15 dark:bg-soft-blue/15 text-islamic-green dark:text-soft-blue' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-white'}
+                flex flex-col items-start w-full pr-4`}
             >
-              <div className="flex flex-col text-left">
-                <div className="font-medium">{(module?.no || (m + 1)) + ': ' + module.title}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {module.lessons?.length} lessons • {module.durationHours} hours
-                </div>
-              </div>
+              <span className="text-sm font-semibold mb-1">Module {(module?.no || (m + 1))}</span>
+              <h4 className="font-bold text-left">{module.title}</h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-left mt-1">
+                <BookOpen className="h-3 w-3 inline-block mr-1 -mt-0.5" /> {module.lessons?.length} lessons • <Clock className="h-3 w-3 inline-block mr-1 -mt-0.5" /> {module.durationHours} hours
+              </p>
             </AccordionTrigger>
-            <AccordionContent className="pb-0">
-              {/* Only render lessons for the currently selected module AND if the module is open */}
-              {openModuleAccordion === `module-${module.id}` && (
-                <div className="pl-4 py-2 space-y-1">
-                  <h4 className="font-semibold text-islamic-green dark:text-soft-blue mb-2">Lessons</h4>
-                  {module.lessons?.map((lesson, i) => (
-                    <div
-                      key={lesson.id}
-                      className={`p-2 rounded cursor-pointer flex items-center ${currentLesson?.id === lesson.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                      onClick={() => handleLessonChange(lesson, module)}
-                    >
-                      {/* <div className={`w-4 h-4 rounded-full mr-2 ${currentLesson?.id === lesson.id ? 'bg-islamic-green dark:bg-soft-blue' : 'border border-gray-400'}`} /> */}
-                      <span>{lesson?.no || (i + 1) + '. ' + lesson.title}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <AccordionContent className="pb-2 pt-0">
+              <ul className="space-y-1 pl-4 py-2 border-l-2 border-islamic-green/20 dark:border-soft-blue/20 ml-3">
+                {module.lessons?.map((lesson, i) => (
+                  <li
+                    key={lesson.id}
+                    className={`flex items-center p-2 rounded-md cursor-pointer transition-colors duration-200
+                      ${currentLesson?.id === lesson.id ? 'bg-islamic-green/10 dark:bg-soft-blue/10 text-islamic-green dark:text-soft-blue font-semibold' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`}
+                    onClick={() => handleLessonChange(lesson, module)}
+                  >
+                    <CheckCircle2 className={`h-4 w-4 mr-2 flex-shrink-0 ${currentLesson?.id === lesson.id ? 'text-islamic-green dark:text-soft-blue' : 'text-gray-400 dark:text-gray-500'}`} />
+                    <span>{lesson?.no || (i + 1)}. {lesson.title}</span>
+                  </li>
+                ))}
+              </ul>
             </AccordionContent>
           </AccordionItem>
         ))}
@@ -368,21 +510,27 @@ export default function CourseLearnPage() {
   );
 
   return (
-    <div className="flex flex-col min-h-screen bg-parchment dark:bg-dark-gray">
+    <div className="flex flex-col min-h-screen bg-parchment dark:bg-dark-gray text-gray-900 dark:text-white">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-b border-islamic-green/20 dark:border-soft-blue/20 p-4">
-        <div className="container mx-auto flex justify-between items-center">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-b border-islamic-green/20 dark:border-soft-blue/20 p-4 shadow-sm">
+        <div className="container mx-auto flex justify-between items-center h-full">
           <div className="flex items-center">
             {/* Mobile Sidebar Toggle (Sheet) - visible on small screens, hidden on large */}
             <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
               <SheetTrigger asChild className="lg:hidden mr-4">
-                <Button variant="outline" size="icon">
-                  <Menu className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="text-islamic-green dark:text-soft-blue">
+                  <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray">
-                <SheetHeader>
-                  <SheetTitle className="text-islamic-green dark:text-soft-blue">Course Navigation</SheetTitle>
+              <SheetContent side="left" className="w-64 sm:w-80 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray">
+                <SheetHeader className="mb-4">
+                  <SheetTitle className="text-islamic-green dark:text-soft-blue text-2xl font-bold">Course Navigation</SheetTitle>
+                  <SheetClose asChild>
+                    {/* An invisible button or just let sheet close on outside click/esc */}
+                    <Button variant="ghost" size="sm" className="absolute top-4 right-4 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">
+                        &times;
+                    </Button>
+                  </SheetClose>
                 </SheetHeader>
                 <div className="mt-4">
                   {sidebarContent}
@@ -390,66 +538,79 @@ export default function CourseLearnPage() {
               </SheetContent>
             </Sheet>
 
-            <Link href={`/courses/${courseId}`} className="text-islamic-green dark:text-soft-blue hover:underline">
-              <ChevronLeft className="inline mr-1" /> Back to course
+            <Link href={`/courses/${courseId}`} className="text-islamic-green dark:text-soft-blue hover:underline flex items-center text-sm sm:text-base font-medium">
+              <ChevronLeft className="inline mr-1 h-4 w-4" /> Back to Course Overview
             </Link>
           </div>
 
-          <div className="text-sm text-gray-600 dark:text-gray-400 hidden sm:block"> {/* Hidden on small screens */}
-            <b>{course.title}</b>
+          {/* Current Lesson Title in Header */}
+          <div className="flex-1 text-center hidden md:block px-4 truncate">
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200 truncate" title={currentLesson?.title || 'Select a lesson'}>
+                {currentLesson?.title || 'Select a lesson'}
+            </h1>
           </div>
 
+          {/* Theme Toggle */}
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="text-islamic-green dark:text-soft-blue border-islamic-green/20 dark:border-soft-blue/20"
+            className="text-islamic-green dark:text-soft-blue border-islamic-green/20 dark:border-soft-blue/20 ml-auto md:ml-4"
           >
             {theme === "dark" ? (
-              <SunIcon className="h-4 w-4" />
+              <SunIcon className="h-5 w-5" />
             ) : (
-              <MoonIcon className="h-4 w-4" />
+              <MoonIcon className="h-5 w-5" />
             )}
           </Button>
         </div>
       </header>
 
       {/* Main Content Area */}
-      {/* Adjusted padding for header and footer. `min-h-[calc(100vh-theme(space.16)*2)]` ensures content takes up the available space */}
-      <div className="flex flex-1 pt-16 pb-16">
-        {/* Desktop Sidebar - hidden on small screens, block on large */}
-        <aside className="hidden lg:block fixed top-16 left-0 bottom-0 w-64 border-r border-islamic-green/20 dark:border-soft-blue/20 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray z-40">
+      <div className="flex flex-1 pt-16 pb-16"> {/* Adjusting padding for fixed header and footer */}
+        {/* Desktop Sidebar */}
+        <aside className="hidden lg:block fixed top-16 left-0 bottom-0 w-80 border-r border-islamic-green/20 dark:border-soft-blue/20 p-4 overflow-y-auto bg-parchment dark:bg-dark-gray z-40 shadow-lg">
           {sidebarContent}
         </aside>
 
-        {/* Main Content */}
-        {/* On large screens, add left margin for sidebar. Also ensure adequate bottom padding for fixed footer */}
-        <main className="flex-1 p-6 overflow-y-auto lg:ml-64 pb-20">
-          {contentLoading && (currentLesson && !currentLesson?.content) ? (
-            <div className="max-w-20xl mx-auto">
+        {/* Lesson Content Main Area */}
+        <main className="flex-1 p-6 overflow-y-auto lg:ml-80 pb-20">
+          {contentLoading && (currentLesson && !currentLesson.content) ? (
+            <div className="max-w-4xl mx-auto"> {/* Increased max-width for content shimmer */}
                 <ShimmerCard />
                 <ShimmerCard />
                 <ShimmerCard />
-            </div>
-          ) : <></>}
-          {currentLesson ? (
-            <div className="max-w-20xl mx-auto">
-              {/* Lesson Content */}
-              <div className="prose dark:prose-invert max-w-none">
-                <MarkdownRenderer isGenerated={contentLoading} content={currentLesson.content || (!contentLoading ? 'No content available for this lesson.' : '')} />
-              </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-gray-500">Select a lesson to view content</p>
-            </div>
+            currentLesson ? (
+                <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                    <div className="prose dark:prose-invert max-w-none text-gray-800 dark:text-gray-200">
+                        <MarkdownRenderer content={currentLesson.content || 'No content available for this lesson yet.'} />
+                    </div>
+                </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 dark:text-gray-400 p-8">
+                <Lightbulb className="h-16 w-16 mb-4 text-islamic-green dark:text-soft-blue" />
+                <p className="text-xl font-semibold mb-2">Welcome to your course!</p>
+                <p className="text-md">Select a module and lesson from the sidebar to start learning.</p>
+              </div>
+            )
           )}
+           {/* In-content error for lesson generation */}
+          {error && currentLesson && (
+                <div className="mt-8 p-6 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg shadow-sm text-center border border-red-200 dark:border-red-700 max-w-4xl mx-auto">
+                    <h3 className="text-xl font-semibold mb-2">Failed to load/generate lesson content</h3>
+                    <p>{error}</p>
+                    <Button onClick={() => window.location.reload()} className="mt-4 bg-red-500 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-800 text-white">
+                        Retry Lesson
+                    </Button>
+                </div>
+            )}
         </main>
       </div>
 
       {/* Fixed Footer for Navigation */}
-      {/* Ensure footer is fixed at the bottom and its left padding adjusts for the desktop sidebar */}
-      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-t border-islamic-green/20 dark:border-soft-blue/20 p-4 lg:pl-64">
+      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-parchment dark:bg-dark-gray border-t border-islamic-green/20 dark:border-soft-blue/20 p-4 lg:pl-80 shadow-md">
         <div className="container mx-auto flex justify-between items-center">
           <Button
             variant="link"
@@ -458,20 +619,23 @@ export default function CourseLearnPage() {
                 handleLessonChange(prevLessonData.lesson, prevLessonData.module);
               }
             }}
-            disabled={!prevLessonData}
+            disabled={!prevLessonData || contentLoading}
+            className="text-gray-700 dark:text-gray-300 hover:text-islamic-green dark:hover:text-soft-blue transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ChevronLeft className="mr-2 h-4 w-4" /> {prevLessonData?.lesson.title || 'Previous'}
+            <ChevronLeft className="mr-2 h-5 w-5" />
+            <span className="hidden sm:inline">Previous Lesson:</span> {prevLessonData?.lesson.title || 'Start'}
           </Button>
           <Button
-            variant="link" className="text-islamic-green dark:text-soft-blue hover:underline"
+            variant="link"
             onClick={() => {
               if (nextLessonData) {
                 handleLessonChange(nextLessonData.lesson, nextLessonData.module);
               }
             }}
-            disabled={!nextLessonData}
+            disabled={!nextLessonData || contentLoading}
+            className="text-gray-700 dark:text-gray-300 hover:text-islamic-green dark:hover:text-soft-blue transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {nextLessonData?.lesson.title || 'Next'} <ChevronRight className="ml-2 h-4 w-4" />
+            <span className="hidden sm:inline">Next Lesson:</span> {nextLessonData?.lesson.title || 'Finish'} <ChevronRight className="ml-2 h-5 w-5" />
           </Button>
         </div>
       </footer>

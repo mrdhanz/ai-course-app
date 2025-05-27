@@ -2,10 +2,14 @@
 
 import { CourseSuggestionForm } from "@/components/CourseSuggestionForm";
 import { Suspense } from 'react';
-import { Loader2, SunIcon, MoonIcon } from 'lucide-react'; // Import SunIcon and MoonIcon
+import { Loader2 } from 'lucide-react'; // Import SunIcon and MoonIcon
 import Link from "next/link";
 import { Button } from "@/components/ui/button"; // Assuming you have your Button component
 import { useTheme } from "next-themes"; // Import useTheme hook
+import dynamic from "next/dynamic";
+
+const SunIcon = dynamic(() => import('@/components/SunIcon'), { ssr: false })
+const MoonIcon = dynamic(() => import('@/components/MoonIcon'), { ssr: false })
 
 export default function Home() {
   const { theme, setTheme } = useTheme(); // Use the useTheme hook
@@ -20,7 +24,7 @@ export default function Home() {
               {/* Using a regular <a> tag if /courses doesn't exist yet, 
                   otherwise use Link component for client-side navigation */}
               <Link href="/courses" className="text-gray-700 dark:text-gray-300 hover:underline hover:text-islamic-green dark:hover:text-soft-blue transition-colors">
-                Courses
+                My Courses
               </Link>
             </li>
             {/* Add more menu items here, like a profile icon or settings */}

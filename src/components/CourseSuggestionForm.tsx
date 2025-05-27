@@ -9,7 +9,7 @@ import {
     FormControl,
     FormField,
     FormItem,
-    FormMessage, // We'll minimize FormLabel for a cleaner look
+    FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,23 +19,54 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea"; // Still useful for optional detailed input
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useState, useEffect } from "react"; // Added useRef and useEffect for focus
-import { CourseSuggestion, CourseSuggestionsResponse } from "@/types/course-suggestion";
-import { Loader2, Search } from "lucide-react"; // Added Search icon
+import { Textarea } from "@/components/ui/textarea";
+import { useState, useEffect, useRef, useCallback } from "react"; // Added useCallback
+import { Loader2, Search, X } from "lucide-react";
 import { languageMap } from "@/types/language";
 import { useRouter, useSearchParams } from "next/navigation";
-import { cn } from "@/lib/utils"; // Assuming you have a utility for class names
+
+// --- History Utility Functions (Can be in a separate file like `src/lib/search-history.ts`) ---
+const HISTORY_KEY = "course_search_history";
+const MAX_HISTORY_ITEMS = 5; // Limit user history suggestions displayed
+
+const loadSearchHistory = (): string[] => {
+    if (typeof window !== 'undefined') {
+        try {
+            const history = localStorage.getItem(HISTORY_KEY);
+            return history ? JSON.parse(history) : [];
+        } catch (e) {
+            console.error("Failed to parse search history from localStorage", e);
+            return [];
+        }
+    }
+    return [];
+};
+
+const saveSearchHistory = (newSearch: string) => {
+    if (typeof window !== 'undefined' && newSearch.trim() !== "") {
+        try {
+            let history = loadSearchHistory();
+            // Add new search to the beginning, ensure uniqueness
+            history = [newSearch.trim(), ...history.filter(item => item.trim() !== newSearch.trim())];
+            // Trim to max items
+            history = history.slice(0, MAX_HISTORY_ITEMS);
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        } catch (e) {
+            console.error("Failed to save search history to localStorage", e);
+        }
+    }
+};
+// --- End History Utility Functions ---
 
 export function CourseSuggestionForm() {
     const params = useSearchParams();
     const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isGeneratingFullCourse, setIsGeneratingFullCourse] = useState(false);
-    const [suggestions, setSuggestions] = useState<CourseSuggestion[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const suggestionsContainerRef = useRef<HTMLDivElement>(null);
 
     const form = useForm<CourseSuggestionInput>({
         resolver: zodResolver(courseSuggestionSchema),
@@ -48,42 +79,142 @@ export function CourseSuggestionForm() {
         },
     });
 
+    // Debounced value for fetching suggestions to prevent excessive calls
+    const [debouncedSubject, setDebouncedSubject] = useState(form.getValues('subject'));
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSubject(form.getValues('subject'));
+        }, 300); // Debounce delay
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [form.watch('subject')]);
+
     // Focus on the search input when the component mounts
     useEffect(() => {
-        if(form)
+        if (form) {
             form.setFocus('subject');
+        }
     }, [form]);
+
+    // Function to get personalized history suggestions
+    const fetchHistorySuggestions = useCallback((query: string): string[] => {
+        const history = loadSearchHistory();
+        return history.filter(item =>
+            item.toLowerCase().includes(query.toLowerCase())
+        );
+    }, []);
+
+    // Placeholder for fetching general course suggestions (now with AbortController)
+    const fetchGeneralCourseSuggestions = useCallback(async (query: string, type: string, signal: AbortSignal): Promise<string[]> => {
+        if (!query) return [];
+
+        try {
+            // Pass the AbortSignal to the fetch request
+            const response = await fetch(`/api/ai/course/suggestions?q=${encodeURIComponent(query)}&type=${type}`, { signal });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("API error fetching suggestions:", errorData.message);
+                return [];
+            }
+
+            const data: string[] = await response.json();
+            return data;
+        } catch (error) {
+            // Check if the error is due to abortion
+            if (error instanceof Error && error.name === 'AbortError') {
+                console.log('Fetch aborted:', query);
+                return []; // Return empty array or handle as needed for cancelled requests
+            }
+            console.error("Network error fetching suggestions:", error);
+            return [];
+        }
+    }, []);
+
+
+    // Effect to fetch and combine suggestions based on debouncedSubject
+    useEffect(() => {
+        const controller = new AbortController(); // Create a new AbortController
+        const signal = controller.signal; // Get its signal
+
+        const getAndSetSuggestions = async () => {
+            const currentSubject = debouncedSubject;
+
+            if (currentSubject.length === 0) {
+                const history = loadSearchHistory();
+                if (history.length > 0) {
+                    setSuggestions(history);
+                    setShowSuggestions(true);
+                } else {
+                    setSuggestions([]);
+                    setShowSuggestions(false);
+                }
+                return;
+            }
+
+            const historySuggestions = fetchHistorySuggestions(currentSubject);
+            // Pass the signal to the fetch function
+            const generalSuggestions = await fetchGeneralCourseSuggestions(currentSubject, 'subject', signal);
+
+            // Ensure the request wasn't cancelled before setting state
+            if (!signal.aborted) {
+                const combinedSuggestions = [...new Set([...historySuggestions, ...generalSuggestions])];
+                setSuggestions(combinedSuggestions.slice(0, 7));
+                setShowSuggestions(combinedSuggestions.length > 0);
+            }
+        };
+
+        getAndSetSuggestions();
+
+        // Cleanup function: abort the ongoing fetch request if component unmounts
+        // or if a new `debouncedSubject` change triggers this effect again.
+        return () => {
+            controller.abort(); // Abort any pending fetch request
+        };
+    }, [debouncedSubject, fetchGeneralCourseSuggestions, fetchHistorySuggestions]);
+
+
+    // Click outside handler to hide suggestions
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (suggestionsContainerRef.current && !suggestionsContainerRef.current.contains(event.target as Node)) {
+                setShowSuggestions(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
+
+    const handleSuggestionClick = (suggestion: string) => {
+        form.setValue('subject', suggestion, { shouldValidate: true });
+        setShowSuggestions(false);
+        form.setFocus('subject');
+    };
 
     async function onSubmit(data: CourseSuggestionInput) {
         try {
             setIsSubmitting(true);
             setError(null);
-            setSuggestions([]); // Clear previous suggestions
-
-            // Only subject is mandatory for the "search" part
             const payload = {
                 subject: data.subject,
-                audience: data.audience || undefined, // Send only if present
+                audience: data.audience || undefined,
                 goals: data.goals || undefined,
                 verifiedBy: data.verifiedBy || undefined,
                 language: data.language,
             };
+            const searchParams = new URLSearchParams();
+            Object.entries(payload).forEach(([key, value]) => {
+                if (!key || !value) return;
+                searchParams.append(key, value);
+            })
 
-            const response = await fetch('/api/ai/course/suggestions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch suggestions');
-            }
-
-            const result: CourseSuggestionsResponse = await response.json();
-            setSuggestions(result.suggestions);
-            setSelectedCourseId(null); // Reset selected course
+            router.push(`/search?${searchParams.toString()}`);
+            saveSearchHistory(data.subject);
         } catch (err) {
             console.error(err);
             setError("Failed to get course suggestions. Please try again.");
@@ -92,69 +223,9 @@ export function CourseSuggestionForm() {
         }
     }
 
-    async function handleGenerateFullCourse() {
-        if (!selectedCourseId) {
-            setError("Please select a course first");
-            return;
-        }
-
-        try {
-            setIsGeneratingFullCourse(true);
-            setError(null);
-
-            const selectedCourse = suggestions[parseInt(selectedCourseId)];
-            if (!selectedCourse) {
-                throw new Error('Selected course not found');
-            }
-
-            const response = await fetch('/api/ai/course', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    courseTitle: selectedCourse.title,
-                    verifiedBy: selectedCourse.verifiedBy,
-                    totalDuration: selectedCourse.durationWeeks * 24, // Assuming 24 hours/week for duration
-                    level: selectedCourse.difficulty,
-                    lang: form.getValues('language'), // Use the selected language from the form
-                    keyTopics: selectedCourse.keyTopics,
-                    targetAudience: selectedCourse.targetAudience,
-                    prerequisites: selectedCourse.prerequisites,
-                    suggestions: true,
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to generate full course');
-            }
-
-            const result = await response.json();
-            const res = await fetch('/api/courses', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(result)
-            })
-
-            if (!res.ok) {
-                throw new Error('Failed to generate full course');
-            }
-
-            const course = await res.json();
-            router.push(`/courses/${course.id}`)
-        } catch (err) {
-            console.error(err);
-            setError("Failed to generate full course details. Please try again.");
-        } finally {
-            setIsGeneratingFullCourse(false);
-        }
-    }
-
-    // Function to handle Enter key press for immediate search
     const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && !isSubmitting) {
+            e.preventDefault();
             form.handleSubmit(onSubmit)();
         }
     };
@@ -173,13 +244,12 @@ export function CourseSuggestionForm() {
             <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 sm:p-8">
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                        {/* Main Search Input */}
                         <FormField
                             control={form.control}
                             name="subject"
                             render={({ field }) => (
                                 <FormItem>
-                                    <div className="relative flex items-center">
+                                    <div className="relative flex items-center" ref={suggestionsContainerRef}>
                                         <Search className="absolute left-3 h-5 w-5 text-gray-400 dark:text-gray-600" />
                                         <FormControl>
                                             <Input
@@ -187,15 +257,43 @@ export function CourseSuggestionForm() {
                                                 {...field}
                                                 className="w-full pl-10 pr-4 py-3 rounded-full border border-gray-300 focus-visible:ring-2 focus-visible:ring-islamic-green focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus-visible:ring-soft-blue transition-all"
                                                 onKeyPress={handleKeyPress}
+                                                ref={searchInputRef}
+                                                autoComplete="off"
+                                                onFocus={() => {
+                                                    if (suggestions.length > 0 || loadSearchHistory().length > 0) {
+                                                        setShowSuggestions(true);
+                                                        if (form.getValues('subject').length === 0) {
+                                                            setSuggestions(loadSearchHistory());
+                                                        }
+                                                    }
+                                                }}
                                             />
                                         </FormControl>
+                                        {form.getValues('subject').length > 0 && (
+                                            <X className="absolute right-3 h-5 w-5 text-gray-400 dark:text-gray-600 cursor-pointer" onClick={() => form.resetField('subject')} />
+                                        )}
+                                        {showSuggestions && suggestions?.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
+                                                {suggestions.map((suggestion, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="px-4 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200"
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            handleSuggestionClick(suggestion);
+                                                        }}
+                                                    >
+                                                        {suggestion}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <FormMessage className="text-right mt-1" />
                                 </FormItem>
                             )}
                         />
 
-                        {/* Optional Advanced Search / Filters - Collapsible or always visible */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField
                                 control={form.control}
@@ -296,107 +394,6 @@ export function CourseSuggestionForm() {
             {error && (
                 <div className="mt-8 w-full max-w-3xl p-4 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-md shadow-sm">
                     {error}
-                </div>
-            )}
-
-            {/* --- */}
-            {suggestions.length > 0 && (
-                <div className="mt-8 w-full max-w-3xl space-y-6">
-                    <h2 className="text-2xl font-bold text-islamic-green dark:text-soft-blue text-center mb-6">
-                        Course Suggestions
-                    </h2>
-                    <RadioGroup
-                        value={selectedCourseId || ""}
-                        onValueChange={setSelectedCourseId}
-                        className="space-y-4"
-                    >
-                        {suggestions.map((course, id) => (
-                            <div
-                                key={id}
-                                className={cn(
-                                    "p-5 border rounded-lg shadow-sm cursor-pointer transition-all",
-                                    "bg-white dark:bg-gray-800",
-                                    "border-gray-200 dark:border-gray-700",
-                                    selectedCourseId === id.toString()
-                                        ? "border-islamic-green ring-2 ring-islamic-green dark:border-soft-blue dark:ring-soft-blue"
-                                        : "hover:border-gray-400 dark:hover:border-gray-600"
-                                )}
-                            >
-                                <div className="flex items-start gap-4">
-                                    <div className="flex items-center h-5 mt-1">
-                                        <RadioGroupItem value={id.toString()} id={`course-${id}`} className="w-5 h-5" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <label
-                                            htmlFor={`course-${id}`}
-                                            className="block text-xl font-semibold text-islamic-green dark:text-soft-blue cursor-pointer mb-2"
-                                        >
-                                            {course.title}
-                                        </label>
-
-                                        <p className="text-gray-700 dark:text-gray-300 mb-4">
-                                            {course.description}
-                                        </p>
-
-                                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-800 dark:text-gray-200">
-                                            <div>
-                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Target Audience:</p>
-                                                <p>{course.targetAudience}</p>
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Duration:</p>
-                                                <p>{course.durationWeeks} weeks</p>
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Difficulty:</p>
-                                                <p className="capitalize">{course.difficulty}</p>
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Verified By:</p>
-                                                <p className="capitalize">{course.verifiedBy || "N/A"}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-4">
-                                            <p className="font-medium text-islamic-green dark:text-soft-blue">Key Topics:</p>
-                                            <ul className="list-disc list-inside mt-1 text-gray-700 dark:text-gray-300">
-                                                {course.keyTopics.slice(0, 5).map((topic, i) => (
-                                                    <li key={i}>{topic}</li>
-                                                ))}
-                                                {course.keyTopics.length > 5 && (
-                                                    <li className="text-gray-500 dark:text-gray-400">...and more</li>
-                                                )}
-                                            </ul>
-                                        </div>
-                                        {course.prerequisites.length > 0 && (
-                                            <div className="mt-4">
-                                                <p className="font-medium text-islamic-green dark:text-soft-blue">Prerequisites:</p>
-                                                <ul className="list-disc list-inside mt-1 text-gray-700 dark:text-gray-300">
-                                                    {course.prerequisites.map((req, i) => (
-                                                        <li key={i}>{req}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </RadioGroup>
-                    <Button
-                        onClick={handleGenerateFullCourse}
-                        disabled={isGeneratingFullCourse || !selectedCourseId}
-                        className="w-full py-3 px-6 rounded-full bg-islamic-green hover:bg-islamic-green/90 dark:bg-soft-blue dark:hover:bg-soft-blue/90 text-lg font-semibold transition-all flex items-center justify-center gap-2 mt-6"
-                    >
-                        {isGeneratingFullCourse ? (
-                            <>
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                                Generating Full Course...
-                            </>
-                        ) : (
-                            "Generate Full Course Details"
-                        )}
-                    </Button>
                 </div>
             )}
         </div>

@@ -11,8 +11,8 @@ const SunIcon = dynamic(() => import('@/components/SunIcon'), { ssr: false })
 const MoonIcon = dynamic(() => import('@/components/MoonIcon'), { ssr: false })
 
 const menuItems = [
-  { name: 'Course Suggestions', path: '/' },
-  { name: 'Courses', path: '/courses' },
+  { name: 'Search', path: '/' },
+  { name: 'My Courses', path: '/courses' },
 ]
 
 export default function AppLayout({children}: {children: React.ReactNode}) {

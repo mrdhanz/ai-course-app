@@ -15,7 +15,6 @@ import Link from 'next/link'
 
 interface MarkdownRendererProps {
   content: string
-  isGenerated: boolean
   className?: string
 }
 
@@ -117,7 +116,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               }
             }
             const match = /language-(\w+)/.exec(className || '')
-            if (match && match?.[1] === 'markdown') return <MarkdownRenderer content={reactNodeToString(children)} isGenerated />
+            if (match && match?.[1] === 'markdown') return <MarkdownRenderer content={reactNodeToString(children)} />
             // Check if this is inline code by looking at the parent node
             // rehype-highlight adds `hljs` class to code blocks. Inline code doesn't get this.
             // A more robust check might be `match` for block code or checking for `node.properties.className?.includes('hljs')`
