@@ -4,7 +4,7 @@
 import React, { useState } from 'react'
 import { Copy, Check } from 'lucide-react'
 
-export const CopyButton = ({ value }: { value: string }) => {
+export const CopyButton = ({ value, className }: { value: string; className?: string; }) => {
   const [copied, setCopied] = useState(false)
 
   const copyToClipboard = () => {
@@ -16,7 +16,7 @@ export const CopyButton = ({ value }: { value: string }) => {
   return (
     <button
       onClick={copyToClipboard}
-      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+      className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 ${className}`}
       title="Copy to clipboard"
     >
       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}

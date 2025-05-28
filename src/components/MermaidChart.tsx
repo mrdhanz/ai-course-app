@@ -1,10 +1,9 @@
-// components/Mermaid.tsx
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { toPng, toSvg } from 'html-to-image'
 import { CopyButton } from './CopyButton'
-import { ZoomIn, ZoomOut, Download, Play } from 'lucide-react'
+import { ZoomIn, ZoomOut, Download, Play, Maximize, Minimize } from 'lucide-react'
 import mermaid from 'mermaid'
 import { useTheme } from 'next-themes'
 
@@ -13,7 +12,7 @@ interface MermaidProps {
     className?: string;
 }
 
-// Common mermaid syntax fixes
+// Common mermaid syntax fixes (omitted for brevity, assume it's the same as your provided code)
 export const fixCommonErrors = (chart: string): string => {
     let fixed = chart
 
@@ -178,7 +177,7 @@ export const fixCommonErrors = (chart: string): string => {
     fixed = fixed.replaceAll('&gt;', '>')
     fixed = fixed.replace(
         /^(\s*[A-Z0-9]+\s*(?:--?>>?|--?x|--?o|x--?|o--?)\s*[A-Z0-9]+:\s*)([\s\S]*?)$/gm,
-        (match, arrowAndLabelPrefix, descriptionContent) => {
+        (_, arrowAndLabelPrefix, descriptionContent) => {
             // Remove any internal newlines or excessive whitespace from the description content
             // We want to preserve single spaces between words but remove multi-spaces and newlines.
             const cleanedDescription = descriptionContent
@@ -188,6 +187,24 @@ export const fixCommonErrors = (chart: string): string => {
             return `${arrowAndLabelPrefix}${cleanedDescription}`;
         }
     );
+
+    if(new RegExp(/(.) -- (.)\[/g).test(fixed)){
+        fixed = fixed.replace(/(.) -- (.)\[/g, `$1 --> $2[`);
+    }
+
+    if(new RegExp(/(.) --> end/g).test(fixed)){
+        fixed = fixed.replace(/(.) --> end/g, `$1 --> finish`);
+    }
+
+    fixed = fixed.replace(/(\d+)\.\s/g, (_, p1) => {
+        return `${p1}.`;
+    }).replaceAll('`', '');
+
+    fixed = fixed.replace(/(\w+)\(\s*"?\\?"(.*?)(?:\\?"?["']?)?\s*\)/gm, '$1("$2")');
+
+    fixed = fixed.replace(/(\w+)\[\s*"?\\?"(.*?)(?:\\?"?["']?)?\s*\]/gm, '$1["$2"]');
+    
+
     return fixed
 }
 
@@ -198,7 +215,32 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
     const [view, setView] = useState<'diagram' | 'code'>('code')
     const [scale, setScale] = useState(1)
     const [parseError, setParseError] = useState(false)
-    const fixedChart = chart
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const fixedChart = fixCommonErrors(chart); // Apply fixes here
+
+    const toggleFullscreen = useCallback(() => {
+        if (containerRef.current) {
+            if (!document.fullscreenElement) {
+                containerRef.current.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+        };
+    }, []);
 
     useEffect(() => {
         if (view !== 'diagram' || !fixedChart || !mermaidRef.current) return
@@ -214,13 +256,12 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
                     darkMode: theme === 'dark',
                     wrap: true,
                     er: {
-                        useMaxWidth: true,  // Makes ER diagrams responsive
-                        diagramPadding: 15
+                        useMaxWidth: true
                     },
                     flowchart: {
                         useMaxWidth: true,
-                        htmlLabels: true    // Enables text wrapping
-                    }
+                        htmlLabels: true
+                    },
                 })
 
                 await mermaid.parse(fixedChart)
@@ -260,13 +301,22 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
     if (parseError) {
         return (
             <div className={`bg-red-50 dark:bg-red-900/10 p-4 rounded-lg border border-red-200 dark:border-red-800 ${className}`}>
-                <div className="flex justify-between items-center mb-2">
-                    <div className="text-sm font-medium text-red-600 dark:text-red-400">
+                <div className="flex justify-between items-center mb-2 flex-wrap"> {/* Added flex-wrap */}
+                    <div className="text-sm font-medium text-red-600 dark:text-red-400 mb-2 sm:mb-0"> {/* Adjusted margin */}
                         Mermaid Syntax Error
                     </div>
-                    <CopyButton value={fixedChart} />
+                    <div className="flex space-x-2"> {/* Ensured buttons stay together */}
+                        <button
+                            onClick={() => window.open('https://www.mermaidchart.com/play?utm_source=' + window.location.origin)}
+                            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                            title="Playground"
+                        >
+                            <Play className="h-4 w-4" />
+                        </button>
+                        <CopyButton value={fixedChart} />
+                    </div>
                 </div>
-                <pre className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap overflow-auto max-h-96">
+                <pre className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap overflow-auto max-h-96 w-full"> {/* Added w-full */}
                     {fixedChart}
                 </pre>
             </div>
@@ -276,10 +326,10 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
     return (
         <div
             ref={containerRef}
-            className={`rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden ${className}`}
+            className={`rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden ${className} ${isFullscreen ? 'fixed inset-0 z-50 flex flex-col' : ''}`}
         >
-            <div className="flex justify-between items-center border-b px-4 py-2 bg-gray-50 dark:bg-gray-800">
-                <div className="flex space-x-2">
+            <div className={`flex justify-between items-center border-b px-4 py-2 bg-gray-50 dark:bg-gray-800 flex-wrap ${isFullscreen ? 'sticky top-0' : ''}`}> {/* Added flex-wrap */}
+                <div className="flex space-x-2 mb-2 sm:mb-0"> {/* Adjusted margin */}
                     <button
                         onClick={() => setView('diagram')}
                         className={`px-3 py-1 text-sm rounded-md ${view === 'diagram' ? 'bg-primary text-primary-foreground' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
@@ -294,80 +344,93 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
                     </button>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                    {view === 'code' ? <button
-                        onClick={() => window.open('https://www.mermaidchart.com/play?utm_source=' + window.location.origin)}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                        title="Playground"
-                    >
-                        <Play className="h-4 w-4" />
-                    </button> : <></>}
-
-                    <button
-                        onClick={zoomOut}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                        title="Zoom Out"
-                    >
-                        <ZoomOut className="h-4 w-4" />
-                    </button>
-                    <button
-                        onClick={resetZoom}
-                        className="text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                        {Math.round(scale * 100)}%
-                    </button>
-                    <button
-                        onClick={zoomIn}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                        title="Zoom In"
-                    >
-                        <ZoomIn className="h-4 w-4" />
-                    </button>
-
-                    <div className="relative group">
+                <div className="flex items-center space-x-2 flex-wrap"> {/* Added flex-wrap */}
+                    {view === 'code' ? (
                         <button
+                            onClick={() => window.open('https://www.mermaidchart.com/play?utm_source=' + window.location.origin)}
                             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                            title="Download"
+                            title="Playground"
                         >
-                            <Download className="h-4 w-4" />
+                            <Play className="h-4 w-4" />
                         </button>
-                        <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-gray-800 shadow-lg rounded-md py-1 z-10 hidden group-hover:block">
+                    ) : (
+                        <>
                             <button
-                                onClick={() => handleDownload('png')}
-                                className="block w-full text-left px-4 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+                                onClick={zoomOut}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                                title="Zoom Out"
                             >
-                                Download PNG
+                                <ZoomOut className="h-4 w-4" />
                             </button>
                             <button
-                                onClick={() => handleDownload('svg')}
-                                className="block w-full text-left px-4 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+                                onClick={resetZoom}
+                                className="text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                             >
-                                Download SVG
+                                {Math.round(scale * 100)}%
                             </button>
-                        </div>
-                    </div>
+                            <button
+                                onClick={zoomIn}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                                title="Zoom In"
+                            >
+                                <ZoomIn className="h-4 w-4" />
+                            </button>
+
+                            <div className="relative group">
+                                <button
+                                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    title="Download"
+                                >
+                                    <Download className="h-4 w-4" />
+                                </button>
+                                <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-gray-800 shadow-lg rounded-md py-1 z-10 hidden group-hover:block">
+                                    <button
+                                        onClick={() => handleDownload('png')}
+                                        className="block w-full text-left px-4 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+                                    >
+                                        Download PNG
+                                    </button>
+                                    <button
+                                        onClick={() => handleDownload('svg')}
+                                        className="block w-full text-left px-4 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+                                    >
+                                        Download SVG
+                                    </button>
+                                </div>
+                            </div>
+                            <button
+                                onClick={toggleFullscreen}
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                            >
+                                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+                            </button>
+                        </>
+                    )}
 
                     <CopyButton value={fixedChart} />
                 </div>
             </div>
 
-            <div className="overflow-auto  bg-white dark:bg-gray-900">
+            <div className={`overflow-auto bg-white dark:bg-gray-900 ${isFullscreen ? 'flex-grow' : ''}`}>
                 {view === 'diagram' ? (
                     <div
                         className="mermaid-container"
                         style={{
                             minHeight: '200px',
-                            resize: 'both',
-                            overflow: 'auto'
+                            resize: isFullscreen ? 'none' : 'vertical', // Allow vertical resize when not in fullscreen
+                            overflow: 'auto',
+                            height: isFullscreen ? '100%' : 'auto', // Take full height in fullscreen
+                            width: '100%' // Ensure container takes full width
                         }}
                     >
                         <div className="mermaid" ref={mermaidRef} style={{
                             transform: `scale(${scale})`,
-                            transformOrigin: 'top left'
+                            transformOrigin: 'top left',
                         }} />
                     </div>
                 ) : (
-                    <pre className="text-sm p-4 bg-gray-50 dark:bg-gray-800 rounded overflow-auto max-h-96">
+                    <pre className="text-sm p-4 bg-gray-50 dark:bg-gray-800 rounded overflow-auto h-full w-full"> {/* h-full and w-full */}
                         {fixedChart}
                     </pre>
                 )}
@@ -375,6 +438,5 @@ export function Mermaid({ chart, className = '' }: MermaidProps) {
         </div>
     )
 }
-
 
 export default Mermaid

@@ -1,7 +1,7 @@
 // components/MarkdownRenderer.tsx
 'use client'
 
-import React, { useEffect, useState } from 'react' // Import useEffect
+import React, { useEffect } from 'react' // Import useEffect
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils' // Assuming this is for tailwind-merge or simil
 import Mermaid, { fixCommonErrors } from './MermaidChart'
 import { useTheme } from 'next-themes'
 import Link from 'next/link'
+import { CopyButton } from './CopyButton'
 
 interface MarkdownRendererProps {
   content: string
@@ -37,7 +38,6 @@ const containsArabic = (text: string) => {
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   const { theme } = useTheme();
   // Fix: Initialize useState with a valid state, e.g., false
-  const [copied, setCopied] = useState(false)
   useEffect(() => {
     const linkId = 'highlight-js-theme';
 
@@ -106,17 +106,9 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
             />
           ),
           code: ({ className, children, ...props }) => {
-            const copyToClipboard = () => {
-              // Ensure children is not empty before trying to copy
-              const textToCopy = reactNodeToString(children);
-              if (textToCopy) {
-                navigator.clipboard.writeText(textToCopy)
-                setCopied(true)
-                setTimeout(() => setCopied(false), 2000)
-              }
-            }
+            const codeContent = reactNodeToString(children);
             const match = /language-(\w+)/.exec(className || '')
-            if (match && match?.[1] === 'markdown') return <MarkdownRenderer content={reactNodeToString(children)} />
+            if (match && match?.[1] === 'markdown') return <MarkdownRenderer content={codeContent} />
             // Check if this is inline code by looking at the parent node
             // rehype-highlight adds `hljs` class to code blocks. Inline code doesn't get this.
             // A more robust check might be `match` for block code or checking for `node.properties.className?.includes('hljs')`
@@ -127,18 +119,13 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
                 <Mermaid chart={fixCommonErrors(String(children))} />
               );
             }
-            const isArabic = containsArabic(reactNodeToString(children));
+            const isArabic = containsArabic(codeContent);
 
             if (isBlock && (match?.[1] === 'arabic' || isArabic)) {
 
               return (
                 <div className="relative my-4">
-                  <button
-                    onClick={copyToClipboard}
-                    className="absolute left-2 top-2 p-1 rounded bg-gray-700 text-white text-xs z-[1]" // Add z-index
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
+                  <CopyButton value={codeContent} className='absolute left-2 top-2 p-1 rounded bg-gray-700 text-white text-xs z-[1]'/>
                   <div className={cn(
                     "my-6 p-6 border-2 border-green-500 rounded-lg bg-green-50 dark:bg-green-950/20",
                     'font-arabic',
@@ -152,9 +139,13 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
             }
 
             if (!isBlock) { // If it's not a block code, treat as 
-              const httpHttpsLinkRegex = /^(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/[a-zA-Z0-9]+\.[^\s]{2,}|[a-zA-Z0-9]+\.[^\s]{2,})$/i;
-              if(httpHttpsLinkRegex.test(String(children))){
-                return (<Link href={String(children)} target="_blank" rel="noopener noreferrer" className="text-islamic-green dark:text-soft-blue hover:underline">{children}</Link>)
+              const httpHttpsLinkRegex = /^(https?:\/\/)?(www\.)?([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.[a-zA-Z]{2,6}(?:\.[a-zA-Z]{2,6})*)(?:[\/\w .-]*)*\/?$/igm;
+              let linkText = String(children);
+              if(httpHttpsLinkRegex.test(linkText)){
+                if (!linkText.startsWith('http://') && !linkText.startsWith('https://')) {
+                    linkText = `http://${linkText}`;
+                }
+                return (<Link href={linkText} target="_blank" rel="noopener noreferrer" className="text-islamic-green line-clamp-2 dark:text-soft-blue hover:underline">{children}</Link>)
               }
               return (
                 <code
@@ -175,16 +166,11 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
             return (
               <div className="relative my-4">
                 {match && (
-                  <div className="text-xs text-gray-400 absolute top-2 left-2 z-[1]"> {/* Add z-index to ensure visibility */}
+                  <div className="text-xs text-gray-400 absolute top-2 right-10 z-[1]"> {/* Add z-index to ensure visibility */}
                     {match[1]}
                   </div>
                 )}
-                <button
-                  onClick={copyToClipboard}
-                  className="absolute right-2 top-2 p-1 rounded bg-gray-700 text-white text-xs z-[1]" // Add z-index
-                >
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
+                <CopyButton value={codeContent} className="absolute right-2 top-2 p-1 z-[1]"/>
                 <pre className="rounded-lg overflow-x-auto p-4 bg-gray-50 dark:bg-gray-800">
                   <code {...props}>
                     {children}

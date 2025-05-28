@@ -95,7 +95,6 @@ body {
 .mermaid-container {
   width: 100%;
   overflow: auto;
-  margin: 1rem 0;
 }
 
 .mermaid {

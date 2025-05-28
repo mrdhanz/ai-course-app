@@ -91,13 +91,6 @@ export function CourseSuggestionForm() {
         };
     }, [form.watch('subject')]);
 
-    // Focus on the search input when the component mounts
-    useEffect(() => {
-        if (form) {
-            form.setFocus('subject');
-        }
-    }, [form]);
-
     // Function to get personalized history suggestions
     const fetchHistorySuggestions = useCallback((query: string): string[] => {
         const history = loadSearchHistory();

@@ -20,6 +20,7 @@ export async function GET(
                 id: true,
                 title: true,
                 moduleId: true,
+                no: true,
                 // Explicitly exclude content field
               },
               orderBy: { no: "asc" },

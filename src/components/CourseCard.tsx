@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { ExploreCourse } from '@/types/course-explore';
 import { languageMap } from '@/types/language';
 import { BookOpen, Clock, Zap, User } from 'lucide-react'; // Import additional icons
-//import Image from 'next/image'; // For potential course image
-
+// import Image from 'next/image'; // For potential course image
 interface CourseCardProps {
   course: ExploreCourse;
 }
@@ -24,25 +23,23 @@ export function CourseCard({ course }: CourseCardProps) {
     }
   }
 
-  // Fallback image if course doesn't have one
- // const courseImage = course.imageUrl || `https://via.placeholder.com/400x200/4CAF50/FFFFFF?text=${encodeURIComponent(course.title.split(' ').slice(0,2).join(' '))}`;
-
   return (
     <div className="group bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-200 dark:border-gray-700 cursor-pointer">
       <Link href={`/courses/${course.id}`} className="block">
         {/* Course Image or Placeholder */}
-        <div className="relative w-full h-40 bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
-          {/* <Image
+        <div className="relative w-full h-12 bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
+          {/* {courseImage && <Image
             src={courseImage}
             alt={`Cover image for ${course.title}`}
             width={400}
             height={200}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => {
-              // Fallback to a simpler placeholder if image fails to load
-              e.currentTarget.src = `https://via.placeholder.com/400x200/4CAF50/FFFFFF?text=${encodeURIComponent(course.title.split(' ').slice(0,2).join(' '))}`;
-            }}
-          /> */}
+            // onError={(e) => {
+            //   // Fallback to a simpler placeholder if image fails to load
+            //   e.currentTarget.src = `https://via.placeholder.com/400x200/4CAF50/FFFFFF?text=${encodeURIComponent(course.title.split(' ').slice(0,2).join(' '))}`;
+            // }}
+          />} */}
+          
           {/* Difficulty Level as a badge on the image */}
           <span className={`absolute top-3 right-3 text-xs px-3 py-1 rounded-full font-semibold capitalize ${getDifficultyColor(course.difficultyLevel)} shadow-sm`}>
             {course.difficultyLevel}
